@@ -11,21 +11,18 @@ dx = (xm-x0)/nx  # x increment
 tf = 10  # final time
 nt = 10  # number of time steps
 dt = tf / nt  # time step
-uf = 10  # free velocity
-rho_m = 3  # maximum (jam) density
+uf = 80  # free velocity
+rho_m = 50  # maximum (jam) density
 
 # create empty rho arrays
 rho_c = np.zeros(nx+1)  # 'current' rho array
 rho_n = rho_c              # 'next' rho array
 
 # Final arrays
-density = flow = velocity = np.zeros((nx+1, nt-1))
-print(density.shape)
-
-x = np.linspace(x0, xm, nx+1)  # create space grid
+density = flow = velocity = np.zeros((nx+1, nt+1))
 
 for i in range(0, nx+1):  # initialise rho distribution
-    rho_c[i] = 2
+    rho_c[i] = 1
 
 u = uf*(1-rho_c/rho_m)  # Greenshields velocity
 f = rho_c*u             # Flow-density-speed relation
@@ -35,7 +32,7 @@ density[:, 0] = rho_c
 velocity[:, 0] = u
 flow[:, 0] = f
 
-for t in np.linspace(1, tf, num=nt):  # time loop
+for t in np.linspace(dt, tf, num=nt):  # time loop
     time_index = int(round(t/dt))
 
     for i in range(0, nx+1):  # space loop
@@ -49,3 +46,4 @@ for t in np.linspace(1, tf, num=nt):  # time loop
     density[:, time_index] = rho_c
     velocity[:, time_index] = u
     flow[:, time_index] = f
+
