@@ -2,80 +2,86 @@
 # Upwind discretisation
 
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
-nx = 1000  # number of nodes
-x0 = -200   # 'left' x value
-xm = 200  # 'right' x value
-dx = (xm-x0)/nx  # x increment
-tf = 5  # final time
-nt = 500  # number of time steps
-dt = tf / nt  # time step
-uf = 25  # free velocity
-rho_m = 0.04  # maximum (jam) density
+# DEFINE GEOMETRY
 
-# create empty rho arrays
-rho_c = np.zeros(nx)  # 'current' rho array
-rho_n = np.zeros(nx)  # 'next' rho array
-
-# dimension arrays
-x = np.linspace(x0, xm, nx)
-time = np.linspace(dt, tf, num=nt)
-
-# Final arrays
-density = np.zeros((nx, nt+1))
-flow = np.zeros((nx, nt+1))
-velocity = np.zeros((nx, nt+1))
-
-for i in range(0, nx):  # initialise rho distribution
-    rho_c[i] = (1+abs(x[i])/x[i])/(100)+(0.01)
-
-u = uf*(1-rho_c[:]/rho_m)  # Greenshields velocity
-f = rho_c[:]*u[:]             # Flow-density-speed relation
-
-# Store initial values in large arrays
-density[:, 0] = rho_c[:]
-velocity[:, 0] = u[:]
-flow[:, 0] = f[:]
-
-for t in time:  # time loop
-    time_index = int(round(t/dt))
-
-    for i in range(1, nx-1):  # space loop
-        rho_n[i] = rho_c[i] - (dt/dx)*(f[i]-f[i-1])  # Upwind update scheme
-
-    rho_n[0] = 0.01
-    rho_n[nx - 1] = 0.03
+length = 5  # km
+vmax = 90  # km/h
+def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
+def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 
 
-    u = uf * (1 - rho_n[:] / rho_m)  # Greenshields velocity
-    f = rho_n[:] * u[:]  # Flow-density-speed relation
+# INITIAL DENSITY PROFILE
 
-    rho_c = rho_n[:]  # save the new solution as 'current' for the next time step
+initial_density = 50  # veh/km
 
-    density[:, time_index] = rho_c[:]
-    velocity[:, time_index] = u[:]
-    flow[:, time_index] = f[:]
+# SUPPY AND DEMAND
 
-# Save variables
-np.savetxt('density.txt', density)
+demand_upstream = 1000  # veh/hr
+supply_downstream = 1500  # veh/hr
+
+# SPATIAL STEP AND FINAL TIME
+
+dx = 0.2  # km
+T = 0.5  # hr
+
+# GODUNOV SOLVER
+
+# total length
+total_length = length
+
+# cell index holder
+X = np.zeros((2, int(total_length/dx)))
+X[0, ] = np.arange(dx/2, total_length+dx/2, dx)
+X[1, ] = np.ones(int(total_length/dx), dtype=int)
+
+# CFL safety factor
+CFL = 1.5
+dt = dx/(CFL*vmax)
+
+# initialise
+n_t = len(np.arange(0, T, dt))
+n_x = len(X[0, ])
+rho = np.zeros((n_t, n_x))
+rho[0, ] = 1250*np.ones((1, n_x))
+
+# time loop
+for i in range(1, n_t-1):
+
+    # for
+    j = 0
+    inflow = supply_downstream  # min(demand_upstream, supply)
+    outflow = demand_upstream  # min(demand, supply_downstream)
+    rho[i, j] = rho[i-1, j]+(dt/dx)*(inflow - outflow)
+    inflow = outflow
+
+    for j in range(1, n_x-2):
+        outflow = demand_upstream
+        rho[i, j] = rho[i - 1, j] + (dt / dx) * (inflow - outflow)
+        inflow = outflow
+
+    # for
+    j = n_x-1
+    outflow = demand_upstream
+    rho[i, j] = rho[i - 1, j] + (dt / dx) * (inflow - outflow)
 
 # Plot results
 
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 plt.style.use('seaborn-pastel')
 
 fig = plt.figure()
-ax = plt.axes(xlim=(-200, 200), ylim=(0, 0.05))
+ax = plt.axes(xlim=(0, length), ylim=(0, 2000))
 line, = ax.plot([], [], lw=2)
 
 def init():
     line.set_data([], [])
     return line,
 def animate(i):
-    y = density[:,i]
-    line.set_data(x,y)
+    y = rho[i, ]
+    line.set_data(X[0, ],y)
     return line,
 
-anim = FuncAnimation(fig, animate, init_func=init, frames=nt, interval=20, blit=True)
+anim = FuncAnimation(fig, animate, init_func=init, frames=n_t, interval=20, blit=True)
 anim.save('density.gif', writer='imagemagick')
