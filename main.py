@@ -1,6 +1,7 @@
 # LWR solver
 
 import numpy as np
+import os
 
 # DEFINE single road GEOMETRY
 
@@ -40,29 +41,30 @@ n_x = len(X[0, ])
 rho = np.zeros((n_t, n_x))
 
 for i in range(0, n_x):
-    if X[0, i] <= 0.5:
+    if X[0, i] <= 0.5+1e-14:
         rho[0, i] = 20
     else:
         rho[0, i] = 100
 
 # time loop
-for i in range(1, n_t-1):
+for i in range(0, n_t-1):
 
     # for
     j = 0
     inflow = min(demand_upstream, supply(rho[i, j]))
-    outflow = min(demand(rho[i, j]), supply_downstream)
-    rho[i, j] = rho[i-1, j]+(dt/dx)*(inflow - outflow)
+    outflow = min(demand(rho[i, j]), supply(rho[i, j+1]))
+    rho[i+1, j] = rho[i, j]+(dt/dx)*(inflow - outflow)
     inflow = outflow
 
-    for j in range(1, n_x-2):
-        outflow = min(demand(rho[i, j]), supply_downstream)
-        rho[i, j] = rho[i - 1, j] + (dt / dx) * (inflow - outflow)
+    for j in range(1, n_x-1):
+        outflow = min(demand(rho[i, j]), supply(rho[i, j+1]))
+        rho[i+1, j] = rho[i, j] + (dt/dx)*(inflow - outflow)
         inflow = outflow
 
     # for
     j = n_x-1
     outflow = min(demand(rho[i, j]), supply_downstream)
-    rho[i, j] = rho[i - 1, j] + (dt / dx) * (inflow - outflow)
+    rho[i+1, j] = rho[i, j] + (dt/dx)*(inflow - outflow)
 
+os.remove('density.txt')
 np.savetxt('density.txt',rho)
