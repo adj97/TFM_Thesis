@@ -1,14 +1,23 @@
-# LWR solver
+#
+#   Andrew Dixon
+#
+#   Created   03/05/2019
+#   Modified  03/06/2019
+#
+#   Thesis project for Cranfield University
+#   MSc in Computational Fluid Dynamics
+#
+#   Description :
+#
 
-import numpy as np
-import os
-from tqdm import tqdm
+import os                    # standard
+import numpy as np           # numerical programming
+from tqdm import tqdm        # progressbar in time loop
 
-# DEFINE road characteristics
-
+# Define Network and Road Characteristics
 geometry = {}
 
-# first road
+# Road 1
 geometry[1] = {}
 length = 5  # km
 vmax = 90  # km/h
@@ -19,7 +28,7 @@ geometry[1]['vmax'] = vmax
 geometry[1]['demand'] = demand
 geometry[1]['supply'] = supply
 
-# second road
+# Road 2
 geometry[2] = {}
 length = 5  # km
 vmax = 90  # km/h
@@ -30,48 +39,68 @@ geometry[2]['vmax'] = vmax
 geometry[2]['demand'] = demand
 geometry[2]['supply'] = supply
 
-# number of road sections
+# Road 3
+geometry[3] = {}
+length = 5  # km
+vmax = 90  # km/h
+def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
+def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
+geometry[3]['length'] = length
+geometry[3]['vmax'] = vmax
+geometry[3]['demand'] = demand
+geometry[3]['supply'] = supply
+
+# Number of road sections
 nb_link = len(geometry)
 
-# NETWORK SUPPLY AND DEMAND
-
+# Network inlet demand and outlet supply
+# What if the network has more than one inlet or outlet
 def demand_upstream(t): return 1200  # veh/hr
 def supply_downstream(t): return 2000  # veh/hr
 
-# SPATIAL STEP AND FINAL TIME
+# Spatial resolution
 dx = 0.2  # km
+
+# Final time
 T = 0.5  # hr
 
-# Maximum network speed
+# Global maximum network speed
 V_max = geometry[1]['vmax']-1e-3
 for road in geometry:
     V_max = max(V_max, geometry[road]['vmax'])
 
-# CFL safety factor
+# Courant-Friedrichs-Lewy (CFL) safety factor
 CFL = 1.5
+
+# Time resolution from CFL constraint
 dt = dx/(CFL*V_max)
 
-# total length
+# Total network length
 total_length = 0
 for road in geometry:
     total_length += geometry[road]['length']
 
-# space grid
+# Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
 
-# Define initial density profile
+# Define initial global density profile
 Rho_0 = np.zeros(len(x))
 for i in range(0, len(x)):
     if x[i] <= 0.5 + 1e-14:
-        Rho_0[i] = 20
-    elif x[i] <= 5 + 1e-14:
         Rho_0[i] = 100
-    elif x[i] <= 5.5 + 1e-14:
-        Rho_0[i] = 20
+    #elif x[i] <= 5 + 1e-14:
+    #    Rho_0[i] = 100
+    #elif x[i] <= 5.5 + 1e-14:
+    #    Rho_0[i] = 20
+    #elif x[i] <= 10 + 1e-14:
+    #    Rho_0[i] = 100
+    #elif x[i] <= 10.5 + 1e-14:
+    #    Rho_0[i] = 20
     else:
-        Rho_0[i] = 100
+        Rho_0[i] = 20
 
 # Density structure
+# In the future this will be the output density data structure
 Density = {}
 for road in geometry:
     start = 0 if road == 1 else int(geometry[road-1]['length']/dx)
@@ -85,7 +114,7 @@ n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
-# GODUNOV SOLVER
+# Godunov solver
 def godunov(geometry, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # road length
@@ -127,44 +156,66 @@ def godunov(geometry, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
 # Junction function
 def junction(geometry,A,rho_0):
-    f_demand = geometry[1]['demand']
-    f_supply = geometry[2]['supply']
+    f_demand_1 = geometry[1]['demand']
+    f_supply_2 = geometry[2]['supply']
+    f_supply_3 = geometry[3]['supply']
 
-    f_D = demand(rho_0[0])
-    f_S = supply(rho_0[1])
+    f_D1 = f_demand_1(rho_0[0])
+    f_S2 = f_supply_2(rho_0[1])
+    f_S3 = f_supply_3(rho_0[2])
 
     flows = np.zeros(len(rho_0))
 
-    flows[0] = min(f_D, f_S)
-    flows[1] = A*flows[0]
+    flows[0] = min(f_D1, min(f_S2/A[0], f_S3/A[1]))
+    flows[1] = A[0]*flows[0]
+    flows[2] = A[1]*flows[0]
 
     return flows
 
 # Time loop
-i = 0  # time iteration index
-for t in tqdm(np.arange(dt, T, dt)):
+# for t in tqdm(np.arange(dt, T, dt)): progress bar
+for t in np.arange(dt, T, dt):
 
-    # Junction function
+    # Loop for each junction
+    # Each junction will have its own traffic distribution matrix
+
+    # Iteration index from time t
+    i = int(round(t/dt)-1)
+
+    # Get this one junction boundary densities
+    # The Density array will be useful here for the general junction
     rho_0 = [Rho[i, int(geometry[1]['length']/dx)-1],
-             Rho[i, int(geometry[1]['length']/dx)]]
+             Rho[i, int(geometry[1]['length']/dx)],
+             Rho[i, int((geometry[1]['length']+geometry[2]['length'])/dx)]]
 
-    A = 1 # traffic distribution matrix
+    # Define traffic distribution matrix
+    A = np.array([0.8, 0.2])
+
+    # Call junction to get input/output flows
     flows = junction(geometry, A, rho_0)
     road_outflow = flows[0]
-    road_inflow = flows[1]
+    road_inflow_2 = flows[1]
+    road_inflow_3 = flows[2]
 
     # Network global supply/demand definitions
-    def net_glob_demand (road, t):
-        n_g_d = demand_upstream(t)*(road == 1) + road_inflow*(road == 2)
+    def net_glob_demand(road, t):
+        n_g_d = demand_upstream(t)*(road == 1) + road_inflow_2*(road == 2) + road_inflow_3*(road == 3)
         return n_g_d
-    def net_glob_supply (road, t):
-        n_g_s = road_outflow*(road == 1) + supply_downstream(t)*(road == 2)
+    def net_glob_supply(road, t):
+        n_g_s = road_outflow*(road == 1) + supply_downstream(t)*(road == 2) + supply_downstream(t)*(road == 3)
         return n_g_s
 
-
+    # Each road seperately
     for road in geometry:
-        # Update 'initial' density as the previous time step solution
-        start = 0 if road == 1 else int(geometry[road - 1]['length'] / dx)
+
+        # Update the new 'initial' density as the previous-time-step solution
+        if road == 1:
+            start = 0
+        else:
+            start = 0
+            for road_index in range(1, road):
+                start += int(geometry[road]['length'] / dx)
+
         end = start + int(geometry[road]['length'] / dx)
         rho_0 = Rho[i, start:end]
 
@@ -176,13 +227,7 @@ for t in tqdm(np.arange(dt, T, dt)):
                                       dx,
                                       dt)
 
-        # First iteration complete
-        # print(Rho[0, start:end])
-        # print(godunov(geometry[road], rho_0, demand_upstream, supply_downstream, dx, dt))
-        # exit()
 
-
-    i = i+1
-
+# Update the saved density profile in pwd
 os.remove('density.txt')
 np.savetxt('density.txt', Rho)
