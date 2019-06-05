@@ -1,49 +1,42 @@
 TFM Network Pseudocode
 
-1) Define the geometry(s)
-   Length, demand(rho), supply(rho), max speed
+Define - road network and each road's characteristics
+       - each junction
 
-2) Give initial density(x) profile 
+Calculate - global network max speed
+          - total network length
+          - lists of source and sink roads
 
-3) Give network inlet upstream demand(t) and outlet downstream supply(t)
+Define - spatial resolution dx
+       - final time end T
+       - CFL constraint
 
-4) Give the discrete space step and final time 
+Calculate - time resolution dt from CFL
 
-5) Run the Godunov solver::
-   
-   Input :: geometry and characteristics
-            initial density rho(t=0)
-            network boundary upstream demand
-            network boundary downstream supply
-            space step dx, and final time T
+Create - spatial grid points
+       - initial global density profile
 
-   Output :: density 
-             time step dt to satisfy CFL condition
+Save - initial profile to final data array
 
-   -----------------------------------------------
+Time loop:
+|
+| Junction loop:
+| |
+| | Get road-junction boundary densities 
+| |
+| |
+| |
+| |
+| |
+| |
+| |
+| |
+| | 
+| |
+| |
+| |
 
-   5.1) Calculate total network length
 
-   5.2) Define a cell index matrix holder of some sort
 
-   5.3) Define the CFL factor
-        Use this to calculate the time step dt=dx/(CFL*vmax)
+	
 
-   5.4) Initialise 
-        Number of time steps
-        Number of spatial steps
-        density array (and known initial density)
-
-   5.5) Lambda=dt/dx if you want
-
-   5.6) Loop through time
-        
-        5.6.1) First Cell
-        5.6.2) Internal Cells Loop
-        5.6.3) End Cell
-
-               Each individual cell or loop:
-               inflow = min(upstream demand, supply)
-               outflow = min(demand, downstream supply)
-               update rho(n+1)=rho(n)+lambda*(in-out)flow
-               inflow=outflow

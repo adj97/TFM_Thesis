@@ -14,7 +14,7 @@
 #   demand of road i - the flow (veh/hr) demanded by road i from road i-1
 #   supply of road i - the flow (veh/hr) supplied to road i+1 from road i
 #
-#   hence the network demand/supply is the inlet/outlet flow in/out of the source/sink edges(roads)
+#   network demand/supply is inlet/outlet flow in/out of the sources/sinks
 #
 
 import os                    # standard
@@ -88,6 +88,24 @@ network[3]['supply'] = supply
 def supply_downstream(t): return 2000
 network[3]['sink'] = supply_downstream
 
+# Define Junction Characteristics
+# To unambiguously describe a traffic network, a description of the junctions is required
+# Each junction i in (1, n) must be prescribed:
+#   in  - a list of the road indexes which feed traffic IN to junction i
+#   out - a lsit of the road indexes which lead OUT from junction i
+#   tdm - a unique traffic distribution matrix
+#
+# The Traffic Distribution Matrix, A
+#   The general junction with m incoming roads and n outgoing roads
+#   A has m rows, n columns
+#   The elements A=(a)_mn describe the proportion of traffic leaving incoming road m and travelling on outgoing road n
+#   The sum of a_mn over index m is 1, as all traffic must leave its current road and also be conserved
+#
+junction_info = {}
+
+# Junction 1
+junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([0.8, 0.2])}
+
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
 #
@@ -116,24 +134,6 @@ for road in network:
         sources.append(road)
     elif network[road]['sink'] != 0:
         sinks.append(road)
-
-# Define Junction Characteristics
-# To unambiguously describe a traffic network, a description of the junctions is required
-# Each junction i in (1, n) must be prescribed:
-#   in  - a list of the road indexes which feed traffic IN to junction i
-#   out - a lsit of the road indexes which lead OUT from junction i
-#   tdm - a unique traffic distribution matrix
-#
-# The Traffic Distribution Matrix, A
-#   The general junction with m incoming roads and n outgoing roads
-#   A has m rows, n columns
-#   The elements A=(a)_mn describe the proportion of traffic leaving incoming road m and travelling on outgoing road n
-#   The sum of a_mn over index m is 1, as all traffic must leave its current road and also be conserved
-#
-junction_info = {}
-
-# Junction 1
-junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([0.8, 0.2])}
 
 # Geometry and junctions (map) defined
 time1 = time.time()
@@ -261,18 +261,15 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
 
         # Get this junction boundary densities
         rho_0 = np.zeros(len(roads_in)+len(roads_out))
-        rho_0_try = {'in': [], 'out': []}
         for rho_0_index in range(0, len(rho_0)):
             if rho_0_index <= len(roads_in)-1:
                 start = int(network[rho_0_index+1]['length']/dx)-1
                 rho_0[rho_0_index] = Rho[i, start]
-                rho_0_try['in'].append(Rho[i, start])
             else:
                 end = 0
                 for road_index in range(1, rho_0_index+1):
                     end += int(network[road_index]['length'] / dx)
                 rho_0[rho_0_index] = Rho[i, end]
-                rho_0_try['out'].append(Rho[i, end])
 
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
