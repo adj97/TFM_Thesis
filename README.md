@@ -3,7 +3,9 @@ Source code for python based traffic flow modelling simulation for Cranfield Uni
 
 ## Model Capabilities
 - [x] Two single roads joined by a *ghost* junction (03/06/2019)
-- [ ] A general n in, m out junction
+- [x] One - Two junction (05/06/2019)
+- [ ] A general network of X, n-in-m-out junctions with any number of source/sinks
+- [ ] Split the source code in `main.py` into multiple files for cleaner easier program
 
 ## File Breakdown
 - `TFM_Network_Pseudocode.txt` : A general structure plan for the whole program
