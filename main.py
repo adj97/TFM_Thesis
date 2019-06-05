@@ -179,8 +179,6 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     rho = np.zeros(len(Rho_0))
 
-    # spatial range index j : 'loop'
-
     # Get current road supply and demand
     supply = network['supply']
     demand = network['demand']

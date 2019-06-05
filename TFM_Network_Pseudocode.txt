@@ -1,5 +1,8 @@
 TFM Network Pseudocode
 
+-----------------------------
+---------- MAIN.PY ----------
+
 Define - road network and each road's characteristics
        - each junction
 
@@ -18,25 +21,61 @@ Create - spatial grid points
 
 Save - initial profile to final data array
 
+Define - Godunov solver
+       - Junction function
+
 Time loop:
 |
 | Junction loop:
 | |
 | | Get road-junction boundary densities 
 | |
+| | Call junction function to get new boundary supply/demands
 | |
+| | Store each new boundary
+| 
+| Define global supply/demand functions for a general road in the network
+| 
+| Road  loop:
 | |
+| | Set the current density on this road as the initial condition vector
 | |
-| |
-| |
-| |
-| |
-| | 
-| |
-| |
-| |
+| | Run the Godunov solver for a single road and a single time step
+
+Save - complete data array
+
+Print - program time statistics
+
+-----------------------------
+-----------------------------
 
 
 
-	
+-----------------------------
+---------- GODUNOV ----------
 
+Get current road length, number of points, supply/demand functions
+Initialise density
+
+Cell loop:
+|
+| Calculate single cell inflow and outflow
+|
+| Update density with simple upwind scheme
+
+-----------------------------
+-----------------------------
+
+
+
+-----------------------------
+-------- JUNCTION F'N -------
+
+Split junction-boundary densities into supply/demand arrays
+
+Initialise new boundary flows array
+
+Calculate and assign new boundary flows
+
+-----------------------------
+-----------------------------
