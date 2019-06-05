@@ -2,61 +2,144 @@
 #   Andrew Dixon
 #
 #   Created   03/05/2019
-#   Modified  03/06/2019
+#   Modified  05/06/2019
 #
 #   Thesis project for Cranfield University
 #   MSc in Computational Fluid Dynamics
 #
-#   Description :
+#   ----------------------------------------------------------------
+#     demand -->    --    --    --    --    --    --    supply -->
+#   ----------------------------------------------------------------
+#
+#   demand of road i - the flow (veh/hr) demanded by road i from road i-1
+#   supply of road i - the flow (veh/hr) supplied to road i+1 from road i
+#
+#   hence the network demand/supply is the inlet/outlet flow in/out of the source/sink edges(roads)
 #
 
 import os                    # standard
 import numpy as np           # numerical programming
 from tqdm import tqdm        # progressbar in time loop
+import time                  # recording execution time
 
-# Define Network and Road Characteristics
-geometry = {}
+# Start time
+time0 = time.time()
+
+##### PLAYGROUND #####
+playground = False
+if playground:
+    some_dict={'nest':{'length':5,'speed':4},
+               'type':'bank'}
+    some_vector = [1,2,3,4,5,6,6]
+    print(type(some_dict))
+    some_dict = some_vector
+    print(type(some_dict))
+    exit()
+######################
+
+#
+# Define Road Characteristics
+# Each road must have:
+#   length - road segment length (in km)
+#   vmax   - max speed (in km/h)
+#   source - binary selection if source(1)/not(0)
+#   sink   - binary selection if sink(1)/not(0)
+#   demand - demand function of density
+#   supply - supply function of density
+#
+# If a road is a source or sink:
+#   change source(1)/sink(1) to the function
+#   demand_upstream (source) or supply_downstream (sink)
+#   a function of time and returns a flow (in veh/hr)
+#
+# Define a new road by network[road] with road = 1, 2, 3, ..., n
+# the network object is a nested dictionary
+# network = {road_1: {'length_1': ___, 'vmax_1': ___, 'source_1': ___, 'sink_1': ___, 'demand_1': ___, 'supply_1': ___},
+#             ...
+#            road_n: {'length_n': ___, 'vmax_n': ___, 'source_n': ___, 'sink_n': ___, 'demand_n': ___, 'supply_n': ___}
+#           }
+#
+network = {}
 
 # Road 1
-geometry[1] = {}
-length = 5  # km
-vmax = 90  # km/h
+network[1] = {'length': 5, 'vmax': 90, 'source': 1, 'sink': 0}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-geometry[1]['length'] = length
-geometry[1]['vmax'] = vmax
-geometry[1]['demand'] = demand
-geometry[1]['supply'] = supply
+network[1]['demand'] = demand
+network[1]['supply'] = supply
+def demand_upstream(t): return 1200
+network[1]['source'] = demand_upstream
 
 # Road 2
-geometry[2] = {}
-length = 5  # km
-vmax = 90  # km/h
+network[2] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-geometry[2]['length'] = length
-geometry[2]['vmax'] = vmax
-geometry[2]['demand'] = demand
-geometry[2]['supply'] = supply
+network[2]['demand'] = demand
+network[2]['supply'] = supply
+def supply_downstream(t): return 2000
+network[2]['sink'] = supply_downstream
 
 # Road 3
-geometry[3] = {}
-length = 5  # km
-vmax = 90  # km/h
+network[3] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-geometry[3]['length'] = length
-geometry[3]['vmax'] = vmax
-geometry[3]['demand'] = demand
-geometry[3]['supply'] = supply
+network[3]['demand'] = demand
+network[3]['supply'] = supply
+def supply_downstream(t): return 2000
+network[3]['sink'] = supply_downstream
+
+# Initialise for road loop
+global_flows = {}  # To store each road's junction in/outflow
+#
+# global_flows is a nested dictionary which stores the supply/demand (or in/outflow) of each road
+# non-source/sink roads have supply/demand which is updated at each time step according to the junction function
+# source or sink roads have a fixed demand or supply function respectively
+# global_flows = {road_1: {'supply': ___, 'demand': ___},
+#                  ...
+#                 road_n: {'supply': ___, 'demand': ___}
+#                }
+#
+V_max = network[1]['vmax']-1e-3  # Global maximum network speed
+total_length = 0  # Total network length
+sources = []  # list of source-road indexes
+sinks = []  # list of sink-road indexes
+# Road loop
+for road in network:
+
+    global_flows[road] = {}  # Each road is a dictionary with demand and supply
+
+    V_max = max(V_max, network[road]['vmax'])  # compare all speeds
+
+    total_length += network[road]['length']  # add up all road lengths
+
+    if network[road]['source'] != 0:
+        sources.append(road)
+    elif network[road]['sink'] != 0:
+        sinks.append(road)
+
+# Define Junction Characteristics
+# To unambiguously describe a traffic network, a description of the junctions is required
+# Each junction i in (1, n) must be prescribed:
+#   in  - a list of the road indexes which feed traffic IN to junction i
+#   out - a lsit of the road indexes which lead OUT from junction i
+#   tdm - a unique traffic distribution matrix
+#
+# The Traffic Distribution Matrix, A
+#   The general junction with m incoming roads and n outgoing roads
+#   A has m rows, n columns
+#   The elements A=(a)_mn describe the proportion of traffic leaving incoming road m and travelling on outgoing road n
+#   The sum of a_mn over index m is 1, as all traffic must leave its current road and also be conserved
+#
+junction_info = {}
+
+# Junction 1
+junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([0.8, 0.2])}
+
+# Geometry and junctions (map) defined
+time1 = time.time()
 
 # Number of road sections
-nb_link = len(geometry)
-
-# Network inlet demand and outlet supply
-# What if the network has more than one inlet or outlet
-def demand_upstream(t): return 1200  # veh/hr
-def supply_downstream(t): return 2000  # veh/hr
+nb_link = len(network)
 
 # Spatial resolution
 dx = 0.2  # km
@@ -64,21 +147,9 @@ dx = 0.2  # km
 # Final time
 T = 0.5  # hr
 
-# Global maximum network speed
-V_max = geometry[1]['vmax']-1e-3
-for road in geometry:
-    V_max = max(V_max, geometry[road]['vmax'])
-
-# Courant-Friedrichs-Lewy (CFL) safety factor
+# Courant-Friedrichs-Lewy (CFL) safety factor constraint
 CFL = 1.5
-
-# Time resolution from CFL constraint
-dt = dx/(CFL*V_max)
-
-# Total network length
-total_length = 0
-for road in geometry:
-    total_length += geometry[road]['length']
+dt = dx/(CFL*V_max)  # Time resolution from CFL constraint
 
 # Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
@@ -88,25 +159,8 @@ Rho_0 = np.zeros(len(x))
 for i in range(0, len(x)):
     if x[i] <= 0.5 + 1e-14:
         Rho_0[i] = 100
-    #elif x[i] <= 5 + 1e-14:
-    #    Rho_0[i] = 100
-    #elif x[i] <= 5.5 + 1e-14:
-    #    Rho_0[i] = 20
-    #elif x[i] <= 10 + 1e-14:
-    #    Rho_0[i] = 100
-    #elif x[i] <= 10.5 + 1e-14:
-    #    Rho_0[i] = 20
     else:
         Rho_0[i] = 20
-
-# Density structure
-# In the future this will be the output density data structure
-Density = {}
-for road in geometry:
-    start = 0 if road == 1 else int(geometry[road-1]['length']/dx)
-    end = start+int(geometry[road]['length']/dx)
-    Density[road] = Rho_0[start:end]
-
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
@@ -115,10 +169,10 @@ Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
 # Godunov solver
-def godunov(geometry, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
+def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # road length
-    length = geometry['length']
+    length = network['length']
 
     # number of x points
     n_x = int(length / dx)
@@ -127,11 +181,13 @@ def godunov(geometry, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # spatial range index j : 'loop'
 
+    # Get current road supply and demand
+    supply = network['supply']
+    demand = network['demand']
+
     # first cell
     j = 0
-    supply = geometry['supply']
-    demand = geometry['demand']
-    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, np.float64) else f_demand_upstream((i+1)*dt)
+    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, (np.float64, int)) else f_demand_upstream((i+1)*dt)
     inflow = min(temp_demand_upstream, supply(Rho_0[j]))
     outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
     rho[j] = Rho_0[j]+(dt/dx)*(inflow - outflow)
@@ -139,95 +195,163 @@ def godunov(geometry, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # internal cells
     for j in range(1, n_x-1):
-        supply = geometry['supply']
-        demand = geometry['demand']
         outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
         rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
         inflow = outflow
 
     # end cell
     j = n_x-1
-    demand = geometry['demand']
-    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, np.float64) else f_supply_downstream((i+1)*dt)
+    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, (np.float64, int)) else f_supply_downstream((i+1)*dt)
     outflow = min(demand(Rho_0[j]), temp_supply_downstream)
     rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
 
     return rho
 
 # Junction function
-def junction(geometry,A,rho_0):
-    f_demand_1 = geometry[1]['demand']
-    f_supply_2 = geometry[2]['supply']
-    f_supply_3 = geometry[3]['supply']
+def junction(network,A,rho_0, junction_number):
 
-    f_D1 = f_demand_1(rho_0[0])
-    f_S2 = f_supply_2(rho_0[1])
-    f_S3 = f_supply_3(rho_0[2])
+    # Get demand and supply functions
+    # Evaluate at the apropriate boundary density
+    # Road IN - demand f'n
+    demand_fn_val = {}
+    for df_i in junction_info[junction_number]['in']:
+        demand_fn_val[df_i] = network[df_i]['demand'](rho_0[df_i-1])
 
+    # Road OUT - supply f'n
+    supply_fn_val = {}
+    for sf_i in junction_info[junction_number]['out']:
+        supply_fn_val[sf_i] = network[sf_i]['supply'](rho_0[sf_i-1])
+
+    # Initialise empty flows output array
     flows = np.zeros(len(rho_0))
 
-    flows[0] = min(f_D1, min(f_S2/A[0], f_S3/A[1]))
-    flows[1] = A[0]*flows[0]
-    flows[2] = A[1]*flows[0]
+    # Get number of in and out roads
+    n_in = len(demand_fn_val)
+    # n_out = len(supply_fn_val)
+
+    # Fill with values
+    # THIS IS NOT GENERALISED FOR N-M JUNCTIONS
+    for flow_i in range(0,len(flows)):
+        if flow_i <= n_in-1:
+            # These are the supply of in-roads
+            flows[flow_i] = min(demand_fn_val[1], min(supply_fn_val[2]/A[0], supply_fn_val[3]/A[1]))
+        else:
+            # These are the demands of out-roads
+            flows[flow_i] = A[flow_i-n_in]*flows[0]
 
     return flows
 
-# Time loop
-# for t in tqdm(np.arange(dt, T, dt)): progress bar
-for t in np.arange(dt, T, dt):
+# Functions and arrays created
+time2 = time.time()
 
-    # Loop for each junction
-    # Each junction will have its own traffic distribution matrix
+# Time loop
+#for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+for t in np.arange(dt, T, dt):  # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
 
-    # Get this one junction boundary densities
-    # The Density array will be useful here for the general junction
-    rho_0 = [Rho[i, int(geometry[1]['length']/dx)-1],
-             Rho[i, int(geometry[1]['length']/dx)],
-             Rho[i, int((geometry[1]['length']+geometry[2]['length'])/dx)]]
+    # Loop for each junction
+    for junction_index in junction_info:
 
-    # Define traffic distribution matrix
-    A = np.array([0.8, 0.2])
+        # Extract from the junction information dict
+        A = junction_info[junction_index]['tdm']
+        roads_in = junction_info[junction_index]['in']
+        roads_out = junction_info[junction_index]['out']
 
-    # Call junction to get input/output flows
-    flows = junction(geometry, A, rho_0)
-    road_outflow = flows[0]
-    road_inflow_2 = flows[1]
-    road_inflow_3 = flows[2]
+        # Get this junction boundary densities
+        rho_0 = np.zeros(len(roads_in)+len(roads_out))
+        rho_0_try = {'in': [], 'out': []}
+        for rho_0_index in range(0, len(rho_0)):
+            if rho_0_index <= len(roads_in)-1:
+                start = int(network[rho_0_index+1]['length']/dx)-1
+                rho_0[rho_0_index] = Rho[i, start]
+                rho_0_try['in'].append(Rho[i, start])
+            else:
+                end = 0
+                for road_index in range(1, rho_0_index+1):
+                    end += int(network[road_index]['length'] / dx)
+                rho_0[rho_0_index] = Rho[i, end]
+                rho_0_try['out'].append(Rho[i, end])
+
+        # Call junction to get input/output flows
+        local_flows = junction(network, A, rho_0, junction_index)
+
+        # Store each road's new supply/demand
+        for local_flow_i in range(0, len(local_flows)):
+            local_flow_val = local_flows[local_flow_i]
+            if local_flow_i < len(roads_in):
+                road_identifier = junction_info[junction_index]['in'][local_flow_i]
+                global_flows[road_identifier]['supply'] = local_flow_val
+            else:
+                road_identifier = junction_info[junction_index]['out'][local_flow_i-len(roads_in)]
+                global_flows[road_identifier]['demand'] = local_flow_val
+
+    # Fill the source/sink supply/demand values in global_flows
+    for source in sources:
+        global_flows[source]['demand'] = network[source]['source']
+    for sink in sinks:
+        global_flows[sink]['supply'] = network[sink]['sink']
 
     # Network global supply/demand definitions
     def net_glob_demand(road, t):
-        n_g_d = demand_upstream(t)*(road == 1) + road_inflow_2*(road == 2) + road_inflow_3*(road == 3)
+
+        if road in sources:
+            n_g_d = global_flows[road]['demand'](t)
+        else:
+            n_g_d = global_flows[road]['demand']
+
         return n_g_d
+
     def net_glob_supply(road, t):
-        n_g_s = road_outflow*(road == 1) + supply_downstream(t)*(road == 2) + supply_downstream(t)*(road == 3)
+
+        if road in sinks:
+            n_g_s = global_flows[road]['supply'](t)
+        else:
+            n_g_s = global_flows[road]['supply']
+
         return n_g_s
 
-    # Each road seperately
-    for road in geometry:
+    # Each road separately
+    for road in network:
 
         # Update the new 'initial' density as the previous-time-step solution
-        if road == 1:
-            start = 0
-        else:
-            start = 0
-            for road_index in range(1, road):
-                start += int(geometry[road]['length'] / dx)
+        start = 0
+        for road_index in range(1, road):
+            start += int(network[road_index]['length'] / dx)
 
-        end = start + int(geometry[road]['length'] / dx)
+        end = start + int(network[road]['length'] / dx)
         rho_0 = Rho[i, start:end]
 
         # Run Godunov for each road over a single time step
-        Rho[i+1, start:end] = godunov(geometry[road],
+        Rho[i+1, start:end] = godunov(network[road],
                                       rho_0,
                                       net_glob_demand(road, t),
                                       net_glob_supply(road, t),
                                       dx,
                                       dt)
 
+# Time loop completed
+time3 = time.time()
 
 # Update the saved density profile in pwd
 os.remove('density.txt')
 np.savetxt('density.txt', Rho)
+
+# Results saved - program complete
+time4 = time.time()
+
+# Print program times
+do_print = False
+if do_print:
+    print('\n')
+    print('  Program time statistics')
+    print('  -----------------------------------')
+    print('  Total program time : {0:.4e} [s]'.format(time4-time0))
+    print('  Defining map       : {0:.4e} [s]'.format(time1-time0))
+    print('  Initialising       : {0:.4e} [s]'.format(time2-time1))
+    print('  Time loop          : {0:.4e} [s]'.format(time3-time2))
+    print('  Save results       : {0:.4e} [s]'.format(time4-time3))
+
+print('Done')
+exit()
