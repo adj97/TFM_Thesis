@@ -7,8 +7,12 @@ Source code for python based traffic flow modelling simulation for Cranfield Uni
 - [ ] Any number of junctions 
 - [ ] Junctions are n in, m out
 - [ ] Any number of sources and sinks
-- [ ] \(Optional) Split the source code in `main.py` into multiple files for cleaner easier program
+- [ ] Create a parameter file `params.py` to be read in `main.py` (T, dx, methodology choices, etc.)
 - [ ] Add error messages for incorrect usage
+- [ ] Add extra numerical schemes/methods/limiters/reconstruction
+
+## Test cases used
+1. Example test case description, *`Author, A.N., Paper Name, 2019`*
 
 ## File Breakdown
 - `TFM_Network_Pseudocode.txt` : A general structure plan for the whole program
