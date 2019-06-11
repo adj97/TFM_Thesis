@@ -18,6 +18,10 @@ Source code for python based traffic flow modelling simulation for Cranfield Uni
 1. Example test case description, *`Author, A.N., Paper Name, 2019`*
 
 ## File Breakdown
+- `.idea` \(folder) : Python project files
+- `Presentation 1 13:06` \(folder) : Presentation slides and material 
+- `venv` \(folder) : Python virtual environment libraries
+- `README.md` : Project and repository information markdown file
 - `TFM_Network_Pseudocode.txt` : A general structure plan for the whole program
 - `density.txt` : Saved density profile over the whole network (most recently simulated profile)
 - `density_plot.m` : Visualise and verify solution/numerical calculations (MATLAB)
