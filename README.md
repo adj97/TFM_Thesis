@@ -11,6 +11,9 @@ Source code for python based traffic flow modelling simulation for Cranfield Uni
 - [ ] Add error messages for incorrect usage
 - [ ] Add extra numerical schemes/methods/limiters/reconstruction
 
+## Ideas \(Future Capabilities)
+- Traffic distribution matrix could be a function of time for different preferences throughout a working day
+
 ## Test cases used
 1. Example test case description, *`Author, A.N., Paper Name, 2019`*
 
