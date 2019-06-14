@@ -2,6 +2,7 @@
 clear all
 close all
 clc
+set(0,'DefaultFigureWindowStyle','docked') 
 
 % Read in
 density=dlmread('density.txt');
@@ -10,8 +11,8 @@ density=dlmread('density.txt');
 road1=density(:,1:25);
 road2=density(:,26:50);
 road3=density(:,51:75);
-%road4=density(:,76:100);
-%road5=density(:,101:125);
+road4=density(:,76:100);
+road5=density(:,101:125);
 
 clear density
 
@@ -21,30 +22,33 @@ close all
 clc
 
 dx=0.2;
+siz=18;
 
 for i=1:338
-    subplot(2,2,1)
+    subplot(3,3,1)
         plot(1:25,road1(i,:),'o')
         ylim([0 113])
         title('Road 1')
         text(5,100,sprintf('Frame %i',i))
-    subplot(2,2,2)
+    subplot(3,3,2)
         plot(1:25,road2(i,:),'o')
         ylim([0 113])
         title('Road 2')
-    subplot(2,2,4)
+    subplot(3,3,5)
         plot(1:25,road3(i,:),'o')
         ylim([0 113])
         title('Road 3')
-    %subplot(3,3,6)
-    %    plot(1:25,road4(i,:),'o')
-    %    ylim([0 113])
-    %    title('Road 4')
-    %subplot(3,3,9)
-    %    plot(1:25,road5(i,:),'o')
-    %    ylim([0 113])
-    %    title('Road 5')
-        
+    subplot(3,3,6)
+        plot(1:25,road4(i,:),'o')
+        ylim([0 113])
+        title('Road 4')
+    subplot(3,3,9)
+        plot(1:25,road5(i,:),'o')
+        ylim([0 113])
+        title('Road 5')
+    %set(gcf,'PaperSize',[siz,siz]);
+    %filename=sprintf('frame%04i',i);
+    %print(filename,'-dpng')
     pause()
 end
 
@@ -67,4 +71,10 @@ for i=1:338
 end
 
 clear i spacing 
+
+
+%% Save figure as PDF
+% figure(2);
+
+
 
