@@ -28,12 +28,6 @@ time0 = time.time()
 ##### PLAYGROUND #####
 playground = False
 if playground:
-    some_dict={'nest':{'length':5,'speed':4},
-               'type':'bank'}
-    some_vector = [1,2,3,4,5,6,6]
-    print(type(some_dict))
-    some_dict = some_vector
-    print(type(some_dict))
     exit()
 ######################
 
@@ -302,23 +296,19 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
             # Get road value
             road_identifier = (roads_in+roads_out)[rho_0_index]
 
-            # Get start and end index for this road
+            # Get road start and end indexes
             start = 0
             for road_index in range(1, road_identifier):
                 start += int(network[road_index]['length'] / dx)
-
             end = start + int(network[road_identifier]['length'] / dx) - 1
 
+            # extract apropriate boundary elements
             if rho_0_index <= len(roads_in)-1:
                 # first len(roads_in) rho_0 elements are for in-road ends
                 rho_0[rho_0_index] = Rho[i, end]
-                rho_0_index_values[rho_0_index]=end
-                #print('In-Road', road_identifier, 'element', end)
             else:
                 # later rho_0 elements are out-road starts
                 rho_0[rho_0_index] = Rho[i, start]
-                rho_0_index_values[rho_0_index] = start
-                #print('Out-Road', road_identifier, 'element', start)
 
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
