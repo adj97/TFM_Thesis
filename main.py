@@ -21,6 +21,7 @@ import os                    # standard
 import numpy as np           # numerical programming
 from tqdm import tqdm        # progressbar in time loop
 import time                  # recording execution time
+import json                  # read json format parameter file
 
 # Start time
 time0 = time.time()
@@ -28,12 +29,6 @@ time0 = time.time()
 ##### PLAYGROUND #####
 playground = False
 if playground:
-    some_dict={'nest':{'length':5,'speed':4},
-               'type':'bank'}
-    some_vector = [1,2,3,4,5,6,6]
-    print(type(some_dict))
-    some_dict = some_vector
-    print(type(some_dict))
     exit()
 ######################
 
@@ -67,7 +62,7 @@ def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[1]['demand'] = demand
 network[1]['supply'] = supply
-def demand_upstream(t): return 1200
+def demand_upstream(t): return 0
 network[1]['source'] = demand_upstream
 
 # Road 2
@@ -76,17 +71,33 @@ def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[2]['demand'] = demand
 network[2]['supply'] = supply
-def supply_downstream(t): return 2000
+def supply_downstream(t): return 10000
 network[2]['sink'] = supply_downstream
 
 # Road 3
-network[3] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+network[3] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[3]['demand'] = demand
 network[3]['supply'] = supply
-def supply_downstream(t): return 2000
-network[3]['sink'] = supply_downstream
+
+# Road 4
+network[4] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
+def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
+network[4]['demand'] = demand
+network[4]['supply'] = supply
+def supply_downstream(t): return 10000
+network[4]['sink'] = supply_downstream
+
+# Road 5
+network[5] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
+def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
+network[5]['demand'] = demand
+network[5]['supply'] = supply
+def supply_downstream(t): return 10000
+network[5]['sink'] = supply_downstream
 
 # Define Junction Characteristics
 # To unambiguously describe a traffic network, a description of the junctions is required
@@ -104,7 +115,8 @@ network[3]['sink'] = supply_downstream
 junction_info = {}
 
 # Junction 1
-junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([0.8, 0.2])}
+junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([[0.5, 0.5]])}
+junction_info[2] = {'in': [3], 'out': [4, 5], 'tdm': np.array([[0.5, 0.5]])}
 
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
@@ -141,15 +153,17 @@ time1 = time.time()
 # Number of road sections
 nb_link = len(network)
 
-# Spatial resolution
-dx = 0.2  # km
+# Read parameter file
+with open('params.txt') as file:
+    params = json.load(file)
 
-# Final time
-T = 0.5  # hr
+# Assign parameters
+dx = params['dx']  # Spatial resolution [km]
+T = params['T']  # Final time [hr]
+CFL = params['CFL']  # Courant-Friedrichs-Lewy (CFL) safety factor constraint
 
-# Courant-Friedrichs-Lewy (CFL) safety factor constraint
-CFL = 1.5
-dt = dx/(CFL*V_max)  # Time resolution from CFL constraint
+# Time resolution from CFL constraint
+dt = dx/(CFL*V_max)  # [hr]
 
 # Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
@@ -157,10 +171,8 @@ x = np.arange(dx/2, total_length+dx/2, dx)
 # Define initial global density profile
 Rho_0 = np.zeros(len(x))
 for i in range(0, len(x)):
-    if x[i] <= 0.5 + 1e-14:
+    if x[i] <= 1:
         Rho_0[i] = 100
-    else:
-        Rho_0[i] = 20
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
@@ -168,7 +180,7 @@ n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
-# Godunov solver
+# Godunov solver function
 def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # road length
@@ -183,9 +195,12 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
     supply = network['supply']
     demand = network['demand']
 
+    # types list for callable function or non-callable number
+    allowed_types = (np.float64, int, np.int64)
+
     # first cell
     j = 0
-    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, (np.float64, int)) else f_demand_upstream((i+1)*dt)
+    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, allowed_types) else f_demand_upstream((i+1)*dt)
     inflow = min(temp_demand_upstream, supply(Rho_0[j]))
     outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
     rho[j] = Rho_0[j]+(dt/dx)*(inflow - outflow)
@@ -199,43 +214,59 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # end cell
     j = n_x-1
-    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, (np.float64, int)) else f_supply_downstream((i+1)*dt)
+    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, allowed_types) else f_supply_downstream((i+1)*dt)
     outflow = min(demand(Rho_0[j]), temp_supply_downstream)
     rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
 
     return rho
 
-# Junction function
+# Junction flow function
 def junction(network,A,rho_0, junction_number):
 
+    # Get number of in and out roads
+    n_in = len(junction_info[junction_number]['in'])
+    n_out = len(junction_info[junction_number]['out'])
+
+    # Initialise demand(in)/supply(out) array
+    sup_dem = np.zeros(len(rho_0))
+
     # Get demand and supply functions
-    # Evaluate at the apropriate boundary density
+    # Evaluate at the appropriate boundary density
     # Road IN - demand f'n
-    demand_fn_val = {}
-    for df_i in junction_info[junction_number]['in']:
-        demand_fn_val[df_i] = network[df_i]['demand'](rho_0[df_i-1])
+    for df_i in range(0, n_in):
+        road_identifier = junction_info[junction_number]['in'][df_i]
+        sup_dem[df_i] = network[road_identifier]['demand'](rho_0[df_i])
 
     # Road OUT - supply f'n
-    supply_fn_val = {}
-    for sf_i in junction_info[junction_number]['out']:
-        supply_fn_val[sf_i] = network[sf_i]['supply'](rho_0[sf_i-1])
+    for sf_i in range(0, n_out):
+        road_identifier = junction_info[junction_number]['out'][sf_i]
+        sup_dem[n_in + sf_i] = network[road_identifier]['supply'](rho_0[n_in + sf_i])
 
     # Initialise empty flows output array
     flows = np.zeros(len(rho_0))
 
-    # Get number of in and out roads
-    n_in = len(demand_fn_val)
-    # n_out = len(supply_fn_val)
-
     # Fill with values
-    # THIS IS NOT GENERALISED FOR N-M JUNCTIONS
-    for flow_i in range(0,len(flows)):
+    for flow_i in range(0, len(flows)):
         if flow_i <= n_in-1:
             # These are the supply of in-roads
-            flows[flow_i] = min(demand_fn_val[1], min(supply_fn_val[2]/A[0], supply_fn_val[3]/A[1]))
+
+            # Create supply min list
+            sup_min_proportion = sup_dem[flow_i+n_in]/A[flow_i, 0]
+            for out_i in range(1, n_out):
+                sup_min_proportion = min(sup_min_proportion, sup_dem[out_i+n_in]/A[flow_i, out_i])
+
+            # Calculate in-road new boundary flow
+            flows[flow_i] = min(sup_dem[flow_i], sup_min_proportion)
         else:
             # These are the demands of out-roads
-            flows[flow_i] = A[flow_i-n_in]*flows[0]
+
+            # Construct the sum q_out(j)=sum_j(A(i,j)*q_in(i))
+            flow_out = 0
+            for in_i in range(0, n_in): # for all i in roads
+                flow_out += A[in_i, flow_i-n_in]*flows[in_i]
+
+            # Calculate the out-road new boundary flow
+            flows[flow_i] = flow_out
 
     return flows
 
@@ -243,8 +274,8 @@ def junction(network,A,rho_0, junction_number):
 time2 = time.time()
 
 # Time loop
-#for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-for t in np.arange(dt, T, dt):  # loop without progress bar
+for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+# for t in np.arange(dt, T, dt):  # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -257,17 +288,30 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
         roads_in = junction_info[junction_index]['in']
         roads_out = junction_info[junction_index]['out']
 
-        # Get this junction boundary densities
+        # Initialise an empty array for boundary densities
         rho_0 = np.zeros(len(roads_in)+len(roads_out))
+        rho_0_index_values = np.zeros(len(roads_in)+len(roads_out))
+
+        # Fill these boundary densities
+        #   with the end of in-roads and the start of out-roads
         for rho_0_index in range(0, len(rho_0)):
+
+            # Get road value
+            road_identifier = (roads_in+roads_out)[rho_0_index]
+
+            # Get road start and end indexes
+            start = 0
+            for road_index in range(1, road_identifier):
+                start += int(network[road_index]['length'] / dx)
+            end = start + int(network[road_identifier]['length'] / dx) - 1
+
+            # extract apropriate boundary elements
             if rho_0_index <= len(roads_in)-1:
-                start = int(network[rho_0_index+1]['length']/dx)-1
-                rho_0[rho_0_index] = Rho[i, start]
-            else:
-                end = 0
-                for road_index in range(1, rho_0_index+1):
-                    end += int(network[road_index]['length'] / dx)
+                # first len(roads_in) rho_0 elements are for in-road ends
                 rho_0[rho_0_index] = Rho[i, end]
+            else:
+                # later rho_0 elements are out-road starts
+                rho_0[rho_0_index] = Rho[i, start]
 
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
