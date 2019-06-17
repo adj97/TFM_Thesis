@@ -21,6 +21,7 @@ import os                    # standard
 import numpy as np           # numerical programming
 from tqdm import tqdm        # progressbar in time loop
 import time                  # recording execution time
+import json                  # read json format parameter file
 
 # Start time
 time0 = time.time()
@@ -152,15 +153,17 @@ time1 = time.time()
 # Number of road sections
 nb_link = len(network)
 
-# Spatial resolution
-dx = 0.2  # km
+# Read parameter file
+with open('params.txt') as file:
+    params = json.load(file)
 
-# Final time
-T = 0.5  # hr
+# Assign parameters
+dx = params['dx']  # Spatial resolution [km]
+T = params['T']  # Final time [hr]
+CFL = params['CFL']  # Courant-Friedrichs-Lewy (CFL) safety factor constraint
 
-# Courant-Friedrichs-Lewy (CFL) safety factor constraint
-CFL = 1.5
-dt = dx/(CFL*V_max)  # Time resolution from CFL constraint
+# Time resolution from CFL constraint
+dt = dx/(CFL*V_max)  # [hr]
 
 # Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
