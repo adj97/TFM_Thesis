@@ -17,12 +17,14 @@
 #   network demand/supply is inlet/outlet flow in/out of the sources/sinks
 #
 
-import os                    # standard
-import numpy as np           # numerical programming
-from tqdm import tqdm        # progressbar in time loop
-import time                  # recording execution time
-import json                  # read json format parameter file
-import define_map            # separate python file for network and junction info
+from __future__ import print_function    # print no new line
+import os                                # standard
+import datetime
+import numpy as np                       # numerical programming
+from tqdm import tqdm                    # progressbar in time loop
+import time                              # recording execution time
+import json                              # read json format parameter file
+import define_map                        # separate python file for network and junction info
 
 # Start time
 time0 = time.time()
@@ -30,6 +32,7 @@ time0 = time.time()
 # PLAYGROUND #
 playground = False
 if playground:
+    pass
     exit()
 ##############
 
@@ -37,6 +40,23 @@ if playground:
 #   read network and junction info
 network = define_map.network
 junction_info = define_map.junction_info
+
+# Check for input errors
+error_tag = 0
+error_message = ''
+for road in network:
+    network_keys = list(network[road].keys())
+    network_keys.sort()
+    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
+        error_message += 'Badly defined road {} \n'.format(road)
+        error_tag += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
+
+if error_tag >= 1:
+    print('Found', error_tag, 'error', end='')
+    print_string = 's:' if error_tag >= 2 else ':'
+    print(print_string)
+    print(error_message)
+    exit()
 
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
@@ -309,16 +329,66 @@ np.savetxt('density.txt', Rho)
 time4 = time.time()
 
 # Print program times
-do_print = False
+do_print = True
 if do_print:
-    print('\n')
-    print('  Program time statistics')
-    print('  -----------------------------------')
-    print('  Total program time : {0:.4e} [s]'.format(time4-time0))
-    print('  Defining map       : {0:.4e} [s]'.format(time1-time0))
-    print('  Initialising       : {0:.4e} [s]'.format(time2-time1))
-    print('  Time loop          : {0:.4e} [s]'.format(time3-time2))
-    print('  Save results       : {0:.4e} [s]'.format(time4-time3))
+    # Check existing info files
+    filename = 'simulation_info'
+    if os.path.exists(filename+'.txt'):
+        filename_counter = 1
+        while True:
+            if os.path.exists(filename+str(filename_counter)+'.txt'):
+                filename_counter += 1
+                continue
+            else:
+                filename += str(filename_counter)+'.txt'
+                break
+    else:
+        filename += '.txt'
 
+    # Overwrite file (comment out)
+    filename = 'simulation_info.txt'
+
+    # Write and open file
+    info_txt = open(filename, 'w+')
+    info_txt.write('TFM Simulation Information \n\n')
+    now = datetime.datetime.now()
+    info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
+
+    # Time breakdown
+    info_txt.write('\nTime breakdown:\n')
+    info_txt.write('{:22s} {:.10s}\n'.format('Code Section', 'Time [s]'))
+    info_txt.write('-----------------------------------------\n')
+    info_txt.write('{:22s} {:.6e}\n'.format('Total program time', time4-time0))
+    info_txt.write('{:22s} {:.6e}\n'.format('Defining map', time1-time0))
+    info_txt.write('{:22s} {:.6e}\n'.format('Initialising', time2-time1))
+    info_txt.write('{:22s} {:.6e}\n'.format('Time loop', time3-time2))
+    info_txt.write('{:22s} {:.6e}\n'.format('Save results', time4-time3))
+    info_txt.write('-----------------------------------------\n')
+
+    # File code line count
+    num_lines = {}
+    files = ['main.py', 'define_map.py', 'params.txt']
+    for file in files:
+        num_lines[file] = 0
+        with open(file, 'r') as f:
+            for line in f:
+                num_lines[file] += 1
+    num_lines['Total'] = 0
+
+    info_txt.write('\nLine Count:\n')
+    info_txt.write('{: <22} {: <20}\n'.format('File', 'Number of Lines'))
+    info_txt.write('-----------------------------------------\n')
+    for file in num_lines:
+        if file=='Total':
+            info_txt.write('-----------------------------------------\n')
+            info_txt.write('{: <22} {: <20}\n'.format(file, num_lines[file]))
+        else:
+            info_txt.write('{: <22} {: <20}\n'.format(file, num_lines[file]))
+        num_lines['Total'] += num_lines[file]
+
+    # Close file
+    info_txt.close()
+
+print('')
 print('Done')
 exit()
