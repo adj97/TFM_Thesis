@@ -66,13 +66,11 @@ def demand_upstream(t): return 0
 network[1]['source'] = demand_upstream
 
 # Road 2
-network[2] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+network[2] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[2]['demand'] = demand
 network[2]['supply'] = supply
-def supply_downstream(t): return 10000
-network[2]['sink'] = supply_downstream
 
 # Road 3
 network[3] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
@@ -82,22 +80,27 @@ network[3]['demand'] = demand
 network[3]['supply'] = supply
 
 # Road 4
-network[4] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+network[4] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[4]['demand'] = demand
 network[4]['supply'] = supply
-def supply_downstream(t): return 10000
-network[4]['sink'] = supply_downstream
 
 # Road 5
-network[5] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+network[5] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
 def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[5]['demand'] = demand
 network[5]['supply'] = supply
+
+# Road 6
+network[6] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
+def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
+def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
+network[6]['demand'] = demand
+network[6]['supply'] = supply
 def supply_downstream(t): return 10000
-network[5]['sink'] = supply_downstream
+network[6]['sink'] = supply_downstream
 
 # Define Junction Characteristics
 # To unambiguously describe a traffic network, a description of the junctions is required
@@ -116,7 +119,10 @@ junction_info = {}
 
 # Junction 1
 junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([[0.5, 0.5]])}
-junction_info[2] = {'in': [3], 'out': [4, 5], 'tdm': np.array([[0.5, 0.5]])}
+junction_info[2] = {'in': [4, 5], 'out': [6], 'tdm': np.array([[1], [1]])}
+junction_info[3] = {'in': [2], 'out': [4], 'tdm': np.array([[1]])}
+junction_info[4] = {'in': [3], 'out': [5], 'tdm': np.array([[1]])}
+
 
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
@@ -232,6 +238,8 @@ def junction(network,A,rho_0, junction_number):
 
     # Get demand and supply functions
     # Evaluate at the appropriate boundary density
+    # Only need the demand of last cells on in roads
+    #           and supply of first cells on out roads
     # Road IN - demand f'n
     for df_i in range(0, n_in):
         road_identifier = junction_info[junction_number]['in'][df_i]
@@ -247,11 +255,13 @@ def junction(network,A,rho_0, junction_number):
 
     # Fill with values
     for flow_i in range(0, len(flows)):
+        # Fill each flows element
+
         if flow_i <= n_in-1:
             # These are the supply of in-roads
 
             # Create supply min list
-            sup_min_proportion = sup_dem[flow_i+n_in]/A[flow_i, 0]
+            sup_min_proportion = sup_dem[n_in]/A[flow_i, 0]
             for out_i in range(1, n_out):
                 sup_min_proportion = min(sup_min_proportion, sup_dem[out_i+n_in]/A[flow_i, out_i])
 
@@ -259,6 +269,7 @@ def junction(network,A,rho_0, junction_number):
             flows[flow_i] = min(sup_dem[flow_i], sup_min_proportion)
         else:
             # These are the demands of out-roads
+
 
             # Construct the sum q_out(j)=sum_j(A(i,j)*q_in(i))
             flow_out = 0
@@ -274,8 +285,8 @@ def junction(network,A,rho_0, junction_number):
 time2 = time.time()
 
 # Time loop
-for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-# for t in np.arange(dt, T, dt):  # loop without progress bar
+# for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+for t in np.arange(dt, T, dt):  # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -319,6 +330,7 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
         # Store each road's new supply/demand
         for local_flow_i in range(0, len(local_flows)):
             local_flow_val = local_flows[local_flow_i]
+
             if local_flow_i < len(roads_in):
                 road_identifier = junction_info[junction_index]['in'][local_flow_i]
                 global_flows[road_identifier]['supply'] = local_flow_val
@@ -331,6 +343,7 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
         global_flows[source]['demand'] = network[source]['source']
     for sink in sinks:
         global_flows[sink]['supply'] = network[sink]['sink']
+
 
     # Network global supply/demand definitions
     def net_glob_demand(road, t):

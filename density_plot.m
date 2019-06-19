@@ -13,6 +13,7 @@ road2=density(:,26:50);
 road3=density(:,51:75);
 road4=density(:,76:100);
 road5=density(:,101:125);
+road6=density(:,126:150);
 
 clear density
 
@@ -25,34 +26,38 @@ dx=0.2;
 siz=18;
 
 for i=1:338
-    subplot(3,3,1)
+    subplot(2,4,[1 5])
         plot(1:25,road1(i,:),'o')
         ylim([0 113])
         title('Road 1')
         text(5,100,sprintf('Frame %i',i))
-    subplot(3,3,2)
+    subplot(2,4,2)
         plot(1:25,road2(i,:),'o')
         ylim([0 113])
         title('Road 2')
-    subplot(3,3,5)
+    subplot(2,4,6)
         plot(1:25,road3(i,:),'o')
         ylim([0 113])
         title('Road 3')
-    subplot(3,3,6)
+    subplot(2,4,3)
         plot(1:25,road4(i,:),'o')
         ylim([0 113])
         title('Road 4')
-    subplot(3,3,9)
+    subplot(2,4,7)
         plot(1:25,road5(i,:),'o')
         ylim([0 113])
         title('Road 5')
+    subplot(2,4,[4 8])
+        plot(1:25,road6(i,:),'o')
+        ylim([0 113])
+        title('Road 6')
     %set(gcf,'PaperSize',[siz,siz]);
     %filename=sprintf('frame%04i',i);
     %print(filename,'-dpng')
     pause()
 end
 
-clear dx i ans dimension
+clear dx ans dimension
 
 %% Plot Quasi microscopic emulation
 %  Overlayed density profile
