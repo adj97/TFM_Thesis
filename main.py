@@ -41,21 +41,88 @@ if playground:
 network = define_map.network
 junction_info = define_map.junction_info
 
-# Check for input errors
-error_tag = 0
+# Check for input errors in define_map.py
+error_info = {'mis_attr': 0,
+              'attr_typ': 0,
+              'tdm_row_sum': 0,
+              'tdm_shape': 0}
 error_message = ''
 for road in network:
+
+    #Check all road attributes are present
     network_keys = list(network[road].keys())
     network_keys.sort()
     if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
         error_message += 'Badly defined road {} \n'.format(road)
-        error_tag += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
+        error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
 
-if error_tag >= 1:
-    print('Found', error_tag, 'error', end='')
-    print_string = 's:' if error_tag >= 2 else ':'
+    # Check correct road attribute types
+    for attr in network_keys:
+        if attr in ['demand', 'supply']:
+            # Supply and demand should be functions of density
+            if not callable(network[road][attr]):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['length', 'vmax']:
+            # Length and vmax should be real numbers
+            allowed_types = (int, float)
+            if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['source', 'sink']:
+            # Source and sink values can be either 0 or a function
+            if not (network[road][attr]==0 or callable(network[road][attr])):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+for junction in junction_info:
+
+    # Check all junction attributes are present
+    junction_keys = list(junction_info[junction].keys())
+    junction_keys.sort()
+    if junction_keys != ['in', 'out', 'tdm']:
+        error_message += 'Badly defined junction {} \n'.format(junction)
+        error_info['mis_attr'] += junction_keys != ['in', 'out', 'tdm']
+
+    # Check junction info data types
+    for in_road in junction_info[junction]['in']+junction_info[junction]['out']:  # in/out roads
+        if (not isinstance(in_road, int)) or in_road > len(network) or in_road <= 0:
+            error_info['attr_typ'] += 1
+            error_message += 'Badly defined in/out road ID type in junction {} \n'.format(junction)
+
+    allowed_types = (int, float)
+    for row in junction_info[junction]['tdm'].tolist():  # tdm elements
+        for a in row:
+            if not isinstance(a, allowed_types):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
+        # Check row sum
+        if sum(row)!=1:
+            error_info['tdm_row_sum'] += 1
+            error_message += 'Incorrect TDM row sum, in junction {} \n'.format(row, junction)
+
+    # Check TDM matches in/out roads
+    shape = junction_info[junction]['tdm'].shape
+    junction_roads = [len(junction_info[junction]['in']), len(junction_info[junction]['out'])]
+    if (shape[0]!=junction_roads[0]) or (shape[1]!=junction_roads[1]):
+        error_info['tdm_shape'] += 1
+        error_message += 'Mismatch TDM shape and in/out roads, in junction {} \n'.format(junction)
+
+# Get total number of all errors
+error_total = 0
+for error_type in error_info:
+    error_total += error_info[error_type]
+
+# Print input error and exit program
+if error_total >= 1:
+    print('ERROR')
+    print('Found', error_total, 'error', end='')
+    print_string = 's: error type breakdown' if error_total >= 2 else ': error type breakdown'
     print(print_string)
-    print(error_message)
+    print(error_info)     # Breakdown
+    print(error_message)  # Messages
     exit()
 
 # Initialise for road loop
