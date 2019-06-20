@@ -1,6 +1,5 @@
 import numpy as np           # numerical programming
 
-#
 # Define Road Characteristics
 # Each road must have:
 #   length - road segment length (in km)
@@ -21,7 +20,7 @@ import numpy as np           # numerical programming
 #             ...
 #            road_n: {'length_n': ___, 'vmax_n': ___, 'source_n': ___, 'sink_n': ___, 'demand_n': ___, 'supply_n': ___}
 #           }
-#
+
 network = {}
 
 # Road 1
@@ -82,7 +81,7 @@ network[6]['sink'] = supply_downstream
 #   A has m rows, n columns
 #   The elements A=(a)_mn describe the proportion of traffic leaving incoming road m and travelling on outgoing road n
 #   The sum of a_mn over index m is 1, as all traffic must leave its current road and also be conserved
-#
+
 junction_info = {}
 
 # Junction 1

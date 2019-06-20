@@ -29,14 +29,15 @@ import define_map                        # separate python file for network and 
 # Start time
 time0 = time.time()
 
-# PLAYGROUND #
+# DEVELOPMENT
+# PLAYGROUND
 playground = False
 if playground:
     pass
     exit()
 ##############
 
-# From define_map.py
+# From define_map.py file
 #   read network and junction info
 network = define_map.network
 junction_info = define_map.junction_info
@@ -137,9 +138,9 @@ global_flows = {}  # To store each road's junction in/outflow
 #                }
 #
 V_max = network[1]['vmax']-1e-3  # Global maximum network speed
-total_length = 0  # Total network length
-sources = []  # list of source-road indexes
-sinks = []  # list of sink-road indexes
+total_length = 0                 # Total network length
+sources = []                     # list of source-road indexes
+sinks = []                       # list of sink-road indexes
 # Road loop
 for road in network:
 
@@ -149,12 +150,11 @@ for road in network:
 
     total_length += network[road]['length']  # add up all road lengths
 
-    if network[road]['source'] != 0:
-        sources.append(road)
-    elif network[road]['sink'] != 0:
-        sinks.append(road)
+    # Create source and sink lists
+    if network[road]['source'] != 0: sources.append(road)
+    if network[road]['sink'] != 0: sinks.append(road)
 
-# Geometry and junctions (map) defined
+# Geometry and junctions (map) defined, errors checked
 time1 = time.time()
 
 # Number of road sections
@@ -188,6 +188,16 @@ n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
+# Get road start and end index function
+def get_start_end(road_id):
+    fn_start = 0
+    for fn_road_index in range(1, road_id):
+        fn_start += int(network[fn_road_index]['length'] / dx)
+    fn_end = fn_start + int(network[road_id]['length'] / dx) - 1
+
+    return [fn_start, fn_end]
+
+
 # Godunov solver function
 def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
@@ -197,6 +207,7 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
     # number of x points
     n_x = int(length / dx)
 
+    # initialise density array
     rho = np.zeros(len(Rho_0))
 
     # Get current road supply and demand
@@ -262,7 +273,7 @@ def junction(network,A,rho_0, junction_number):
         if flow_i <= n_in-1:
             # These are the supply of in-roads
 
-            # Create supply min list
+            # Smallest demands of all outgoing roads
             sup_min_proportion = sup_dem[n_in]/A[flow_i, 0]
             for out_i in range(1, n_out):
                 sup_min_proportion = min(sup_min_proportion, sup_dem[out_i+n_in]/A[flow_i, out_i])
@@ -272,14 +283,10 @@ def junction(network,A,rho_0, junction_number):
         else:
             # These are the demands of out-roads
 
-
-            # Construct the sum q_out(j)=sum_j(A(i,j)*q_in(i))
-            flow_out = 0
+            # Sum of partial flow contribution from each in road
+            flows[flow_i] = 0
             for in_i in range(0, n_in): # for all i in roads
-                flow_out += A[in_i, flow_i-n_in]*flows[in_i]
-
-            # Calculate the out-road new boundary flow
-            flows[flow_i] = flow_out
+                flows[flow_i] += A[in_i, flow_i-n_in]*flows[in_i]
 
     return flows
 
@@ -288,7 +295,7 @@ time2 = time.time()
 
 # Time loop
 # for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-for t in np.arange(dt, T, dt):  # loop without progress bar
+for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -303,7 +310,6 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
 
         # Initialise an empty array for boundary densities
         rho_0 = np.zeros(len(roads_in)+len(roads_out))
-        rho_0_index_values = np.zeros(len(roads_in)+len(roads_out))
 
         # Fill these boundary densities
         #   with the end of in-roads and the start of out-roads
@@ -313,34 +319,33 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
             road_identifier = (roads_in+roads_out)[rho_0_index]
 
             # Get road start and end indexes
-            start = 0
-            for road_index in range(1, road_identifier):
-                start += int(network[road_index]['length'] / dx)
-            end = start + int(network[road_identifier]['length'] / dx) - 1
+            [start, end] = get_start_end(road_identifier)
 
-            # extract apropriate boundary elements
+            # extract appropriate boundary elements
             if rho_0_index <= len(roads_in)-1:
-                # first len(roads_in) rho_0 elements are for in-road ends
+                # in-road end
                 rho_0[rho_0_index] = Rho[i, end]
             else:
-                # later rho_0 elements are out-road starts
+                # out-road start
                 rho_0[rho_0_index] = Rho[i, start]
 
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
 
-        # Store each road's new supply/demand
+        # Store each road's new supply/demand in global_flows
         for local_flow_i in range(0, len(local_flows)):
             local_flow_val = local_flows[local_flow_i]
 
             if local_flow_i < len(roads_in):
+                # in-road
                 road_identifier = junction_info[junction_index]['in'][local_flow_i]
                 global_flows[road_identifier]['supply'] = local_flow_val
             else:
+                # out-road
                 road_identifier = junction_info[junction_index]['out'][local_flow_i-len(roads_in)]
                 global_flows[road_identifier]['demand'] = local_flow_val
 
-    # Fill the source/sink supply/demand values in global_flows
+    # Fill the network source/sink supply/demand values in global_flows
     for source in sources:
         global_flows[source]['demand'] = network[source]['source']
     for sink in sinks:
@@ -369,16 +374,14 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
     # Each road separately
     for road in network:
 
-        # Update the new 'initial' density as the previous-time-step solution
-        start = 0
-        for road_index in range(1, road):
-            start += int(network[road_index]['length'] / dx)
+        # Get start and end indexes
+        [start, end] = get_start_end(road)
 
-        end = start + int(network[road]['length'] / dx)
-        rho_0 = Rho[i, start:end]
+        # Update the new 'initial' density as the previous-time-step solution
+        rho_0 = Rho[i, start:end+1]
 
         # Run Godunov for each road over a single time step
-        Rho[i+1, start:end] = godunov(network[road],
+        Rho[i+1, start:end+1] = godunov(network[road],
                                       rho_0,
                                       net_glob_demand(road, t),
                                       net_glob_supply(road, t),
@@ -388,32 +391,30 @@ for t in np.arange(dt, T, dt):  # loop without progress bar
 # Time loop completed
 time3 = time.time()
 
-# Update the saved density profile in pwd
-os.remove('density.txt')
-np.savetxt('density.txt', Rho)
+# Chose to save or not
+do_print = False
+
+# Save density profile
+if do_print:
+    # Create output folder
+    if not os.path.exists('Simulation_Results'): os.mkdir('Simulation_Results')
+    path = 'Simulation_Results/'+str(datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
+    os.mkdir(path)
+
+    # Update the saved density profile in pwd
+    density_output = path + '/density.txt'
+    np.savetxt(density_output, Rho)
+else:
+    os.remove('density.txt')
+    np.savetxt('density.txt', Rho)
 
 # Results saved - program complete
 time4 = time.time()
 
 # Print program times
-do_print = True
 if do_print:
-    # Check existing info files
-    filename = 'simulation_info'
-    if os.path.exists(filename+'.txt'):
-        filename_counter = 1
-        while True:
-            if os.path.exists(filename+str(filename_counter)+'.txt'):
-                filename_counter += 1
-                continue
-            else:
-                filename += str(filename_counter)+'.txt'
-                break
-    else:
-        filename += '.txt'
-
     # Overwrite file (comment out)
-    filename = 'simulation_info.txt'
+    filename = path + '/simulation_info.txt'
 
     # Write and open file
     info_txt = open(filename, 'w+')
@@ -422,15 +423,16 @@ if do_print:
     info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
 
     # Time breakdown
-    info_txt.write('\nTime breakdown:\n')
-    info_txt.write('{:22s} {:.10s}\n'.format('Code Section', 'Time [s]'))
-    info_txt.write('-----------------------------------------\n')
-    info_txt.write('{:22s} {:.6e}\n'.format('Total program time', time4-time0))
-    info_txt.write('{:22s} {:.6e}\n'.format('Defining map', time1-time0))
-    info_txt.write('{:22s} {:.6e}\n'.format('Initialising', time2-time1))
-    info_txt.write('{:22s} {:.6e}\n'.format('Time loop', time3-time2))
-    info_txt.write('{:22s} {:.6e}\n'.format('Save results', time4-time3))
-    info_txt.write('-----------------------------------------\n')
+    info_txt.write('\n\nTime breakdown:\n')
+    info_txt.write('{:30s} {:.10s}\n'.format('Code Section', 'Time [s]'))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Defining map and error check', time1-time0))
+    info_txt.write('{:30s} {:.6e}\n'.format('Initialising', time2-time1))
+    info_txt.write('{:30s} {:.6e}\n'.format('Time loop', time3-time2))
+    info_txt.write('{:30s} {:.6e}\n'.format('Save results', time4-time3))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Total program time', time4-time0))
+    info_txt.write('----------------------------------------------\n')
 
     # File code line count
     num_lines = {}
@@ -442,20 +444,27 @@ if do_print:
                 num_lines[file] += 1
     num_lines['Total'] = 0
 
-    info_txt.write('\nLine Count:\n')
-    info_txt.write('{: <22} {: <20}\n'.format('File', 'Number of Lines'))
-    info_txt.write('-----------------------------------------\n')
+    info_txt.write('\n\nLine Count:\n')
+    info_txt.write('{: <30} {: <20}\n'.format('File', 'Number of Lines'))
+    info_txt.write('----------------------------------------------\n')
     for file in num_lines:
         if file=='Total':
-            info_txt.write('-----------------------------------------\n')
-            info_txt.write('{: <22} {: <20}\n'.format(file, num_lines[file]))
+            info_txt.write('----------------------------------------------\n')
+            info_txt.write('{: <30} {: <20}\n'.format(file, num_lines[file]))
+            info_txt.write('----------------------------------------------\n')
         else:
-            info_txt.write('{: <22} {: <20}\n'.format(file, num_lines[file]))
+            info_txt.write('{: <30} {: <20}\n'.format(file, num_lines[file]))
         num_lines['Total'] += num_lines[file]
+
+    # Write memory information
+    info_txt.write('\n\nOutput File Memory:\n')
+    info_txt.write('{:30} {:}\n'.format('File', 'Size [MB]'))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{0:30} {1:5.3f}\n'.format('density.txt',os.stat('density.txt').st_size / 1000000))
+    info_txt.write('----------------------------------------------\n')
 
     # Close file
     info_txt.close()
 
-print('')
 print('Done')
 exit()
