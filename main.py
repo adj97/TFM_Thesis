@@ -43,10 +43,14 @@ network = define_map.network
 junction_info = define_map.junction_info
 
 # Check for input errors in define_map.py
-error_info = {'mis_attr': 0,
-              'attr_typ': 0,
-              'tdm_row_sum': 0,
-              'tdm_shape': 0}
+error_info = {'mis_attr': 0,      # Missing attribute
+              'attr_typ': 0,      # Wrong attribute type
+              'tdm_row_sum': 0,   # TDM row sum error
+              'tdm_shape': 0}     # TDM shape error
+error_description = {'mis_attr': 'missing attribute',
+                     'attr_typ': 'wrong attribute type',
+                     'tdm_row_sum': 'TDM row sum error',
+                     'tdm_shape': 'TDM shape error'}
 error_message = ''
 for road in network:
 
@@ -91,18 +95,18 @@ for junction in junction_info:
     for in_road in junction_info[junction]['in']+junction_info[junction]['out']:  # in/out roads
         if (not isinstance(in_road, int)) or in_road > len(network) or in_road <= 0:
             error_info['attr_typ'] += 1
-            error_message += 'Badly defined in/out road ID type in junction {} \n'.format(junction)
+            error_message += 'Badly defined in/out road ID in junction {} \n'.format(junction)
 
     allowed_types = (int, float)
     for row in junction_info[junction]['tdm'].tolist():  # tdm elements
         for a in row:
-            if not isinstance(a, allowed_types):
-                error_info['attr_typ'] += 1
-                error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
+                if not isinstance(a, allowed_types):
+                    error_info['attr_typ'] += 1
+                    error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
         # Check row sum
-        if sum(row)!=1:
+        if abs(1 - sum(row)) >= 1e-3:
             error_info['tdm_row_sum'] += 1
-            error_message += 'Incorrect TDM row sum, in junction {} \n'.format(row, junction)
+            error_message += 'Incorrect TDM row sum, in junction {} \n'.format(junction)
 
     # Check TDM matches in/out roads
     shape = junction_info[junction]['tdm'].shape
@@ -118,13 +122,18 @@ for error_type in error_info:
 
 # Print input error and exit program
 if error_total >= 1:
-    print('ERROR')
-    print('Found', error_total, 'error', end='')
-    print_string = 's: error type breakdown' if error_total >= 2 else ': error type breakdown'
-    print(print_string)
-    print(error_info)     # Breakdown
+    print('ERROR : Found', error_total, 'error(s)')
+    print('\nError breakdown:')
+    for err in error_info:
+        if error_info[err] != 0:
+            print('{} {}'.format(error_info[err], error_description[err]))  # Breakdown
+    print('\nError message(s):')
     print(error_message)  # Messages
-    exit()
+    exit(1)
+else:
+    # No errors
+    pass
+
 
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
@@ -175,12 +184,13 @@ dt = dx/(CFL*V_max)  # [hr]
 # Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
 
+# Initial density profile
+Rho_0 = np.zeros(len(x))
 #### INPUT ####
 # Define initial global density profile
-Rho_0 = np.zeros(len(x))
 for i in range(0, len(x)):
-    if x[i] <= 1:
-        Rho_0[i] = 100
+    Rho_0[i] = 0
+
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
@@ -294,8 +304,8 @@ def junction(network,A,rho_0, junction_number):
 time2 = time.time()
 
 # Time loop
-# for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-for t in np.arange(dt, T, dt):          # loop without progress bar
+for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+#for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -405,6 +415,7 @@ if do_print:
     density_output = path + '/density.txt'
     np.savetxt(density_output, Rho)
 else:
+    # Developing runs
     os.remove('density.txt')
     np.savetxt('density.txt', Rho)
 
@@ -466,5 +477,6 @@ if do_print:
     # Close file
     info_txt.close()
 
+time.sleep(1)
 print('Done')
 exit()

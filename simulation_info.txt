@@ -1,22 +1,22 @@
 TFM Simulation Information 
 
-19/06/2019 16:34:21 
+20/06/2019 13:03:20 
 
 Time breakdown:
-Code Section           Time [s]
+Code Section                   Time [s]
 -----------------------------------------
-Total program time     2.284365e+00
-Defining map           2.040863e-04
-Initialising           1.187086e-02
-Time loop              2.075201e+00
-Save results           1.970892e-01
+Total program time             2.180873e+00
+Defining map and error check   1.759529e-04
+Initialising                   4.141331e-04
+Time loop                      2.058548e+00
+Save results                   1.217349e-01
 -----------------------------------------
 
 Line Count:
-File                   Number of Lines     
+File                           Number of Lines     
 -----------------------------------------
-main.py                461                 
-define_map.py          92                  
-params.txt             3                   
+main.py                        471                 
+define_map.py                  91                  
+params.txt                     3                   
 -----------------------------------------
-Total                  556                 
+Total                          565                 
