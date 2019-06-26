@@ -2,16 +2,12 @@
 Source code for python based traffic flow modelling simulation for Cranfield University individual research project
 
 ## Model Capabilities
-- [x] Two single roads joined by a *ghost* junction \(03/06/2019)
-- [x] One - Two junction \(05/06/2019)
-- [x] Create a parameter file `params.txt` to be read in `main.py` \(17/06/2019)
-- [x] Add error messages for incorrect usage \(19/06/2019)
-- [x] Tested on a diverge and merge network - < > - \(19/06/2019)
-- [x] Write simulation run info text file \(19/06/2019)
-- [x] Split `main.py` to input map file \(19/06/2019)
-- [ ] Any number of junctions 
-- [ ] Junctions are n in, m out
-- [ ] Any number of sources and sinks
+- [x] Any number of junctions 
+- [x] Junctions are n in, m out
+- [x] Any number of sources and sinks
+- [x] Error messages for incorrect usage
+- [x] Write simulation run info text file
+- [x] Split `main.py` to input map file and parameter file
 - [ ] Add extra numerical schemes/methods/limiters/reconstruction
 
 ## Ideas / Future Capabilities
