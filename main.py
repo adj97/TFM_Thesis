@@ -43,44 +43,18 @@ network = define_map.network
 junction_info = define_map.junction_info
 
 # Check for input errors in define_map.py
-error_info = {'mis_attr': 0,      # Missing attribute
-              'attr_typ': 0,      # Wrong attribute type
-              'tdm_row_sum': 0,   # TDM row sum error
-              'tdm_shape': 0}     # TDM shape error
+error_info = {'mis_attr': 0,
+              'attr_typ': 0,
+              'tdm_row_sum': 0,
+              'tdm_shape': 0,
+              'rd_id_er': 0}
 error_description = {'mis_attr': 'missing attribute',
                      'attr_typ': 'wrong attribute type',
                      'tdm_row_sum': 'TDM row sum error',
-                     'tdm_shape': 'TDM shape error'}
+                     'tdm_shape': 'TDM shape error',
+                     'rd_id_er': 'road-junction ID mismatch'}
 error_message = ''
-for road in network:
-
-    #Check all road attributes are present
-    network_keys = list(network[road].keys())
-    network_keys.sort()
-    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
-        error_message += 'Badly defined road {} \n'.format(road)
-        error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
-
-    # Check correct road attribute types
-    for attr in network_keys:
-        if attr in ['demand', 'supply']:
-            # Supply and demand should be functions of density
-            if not callable(network[road][attr]):
-                error_info['attr_typ'] += 1
-                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
-
-        elif attr in ['length', 'vmax']:
-            # Length and vmax should be real numbers
-            allowed_types = (int, float)
-            if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
-                error_info['attr_typ'] += 1
-                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
-
-        elif attr in ['source', 'sink']:
-            # Source and sink values can be either 0 or a function
-            if not (network[road][attr]==0 or callable(network[road][attr])):
-                error_info['attr_typ'] += 1
-                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+jn_inout = {'in': [], 'out': []}
 
 for junction in junction_info:
 
@@ -114,6 +88,72 @@ for junction in junction_info:
     if (shape[0]!=junction_roads[0]) or (shape[1]!=junction_roads[1]):
         error_info['tdm_shape'] += 1
         error_message += 'Mismatch TDM shape and in/out roads, in junction {} \n'.format(junction)
+
+    # In/Out list
+    for in_id in junction_info[junction]['in']:
+        jn_inout['in'].append(in_id)
+    for out_id in junction_info[junction]['out']:
+        jn_inout['out'].append(out_id)
+
+for road in network:
+
+    #Check all road attributes are present
+    network_keys = list(network[road].keys())
+    network_keys.sort()
+    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
+        error_message += 'Badly defined road {} \n'.format(road)
+        error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
+
+    # Check correct road attribute types
+    for attr in network_keys:
+        if attr in ['demand', 'supply']:
+            # Supply and demand should be functions of density
+            if not callable(network[road][attr]):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['length', 'vmax']:
+            # Length and vmax should be real numbers
+            allowed_types = (int, float)
+            if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['source', 'sink']:
+            # Source and sink values can be either 0 or a function
+            if not (network[road][attr]==0 or callable(network[road][attr])):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+    # Check road-junction index matching
+    if len(network)>1:
+        if network[road]['source'] != 0:
+            # Source roads only go IN to junctions
+            if road in jn_inout['out']:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for source road {}'.format(road)
+
+            # Source road goes in to ONE junction only
+            if jn_inout['in'].count(road) != 1:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for source road {}'.format(road)
+
+        elif network[road]['sink'] != 0:
+            # Sink roads only come OUT of junctions
+            if road in jn_inout['in']:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for sink road {}'.format(road)
+
+            # Sink road comes out of ONE junction only
+            if jn_inout['out'].count(road) != 1:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for sink road {}'.format(road)
+
+        else:
+            # Inner roads should be on both sides
+            if jn_inout['in'].count(road)+jn_inout['out'].count(road) < 2:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for internal road {}'.format(road)
 
 # Get total number of all errors
 error_total = 0
@@ -209,10 +249,10 @@ def get_start_end(road_id):
 
 
 # Godunov solver function
-def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
+def godunov(network_section, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # road length
-    length = network['length']
+    length = network_section['length']
 
     # number of x points
     n_x = int(length / dx)
@@ -221,8 +261,8 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
     rho = np.zeros(len(Rho_0))
 
     # Get current road supply and demand
-    supply = network['supply']
-    demand = network['demand']
+    supply = network_section['supply']
+    demand = network_section['demand']
 
     # types list for callable function or non-callable number
     allowed_types = (np.float64, int, np.int64)
@@ -250,7 +290,7 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
     return rho
 
 # Junction flow function
-def junction(network,A,rho_0, junction_number):
+def junction(network_section,A,rho_0, junction_number):
 
     # Get number of in and out roads
     n_in = len(junction_info[junction_number]['in'])
@@ -266,12 +306,12 @@ def junction(network,A,rho_0, junction_number):
     # Road IN - demand f'n
     for df_i in range(0, n_in):
         road_identifier = junction_info[junction_number]['in'][df_i]
-        sup_dem[df_i] = network[road_identifier]['demand'](rho_0[df_i])
+        sup_dem[df_i] = network_section[road_identifier]['demand'](rho_0[df_i])
 
     # Road OUT - supply f'n
     for sf_i in range(0, n_out):
         road_identifier = junction_info[junction_number]['out'][sf_i]
-        sup_dem[n_in + sf_i] = network[road_identifier]['supply'](rho_0[n_in + sf_i])
+        sup_dem[n_in + sf_i] = network_section[road_identifier]['supply'](rho_0[n_in + sf_i])
 
     # Initialise empty flows output array
     flows = np.zeros(len(rho_0))
