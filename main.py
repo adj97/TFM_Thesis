@@ -17,106 +17,163 @@
 #   network demand/supply is inlet/outlet flow in/out of the sources/sinks
 #
 
-import os                    # standard
-import numpy as np           # numerical programming
-from tqdm import tqdm        # progressbar in time loop
-import time                  # recording execution time
-import json                  # read json format parameter file
+from __future__ import print_function    # print no new line
+import os                                # standard
+import datetime
+import numpy as np                       # numerical programming
+from tqdm import tqdm                    # progressbar in time loop
+import time                              # recording execution time
+import json                              # read json format parameter file
+import define_map                        # separate python file for network and junction info
 
 # Start time
 time0 = time.time()
 
-##### PLAYGROUND #####
+# DEVELOPMENT
+# PLAYGROUND
 playground = False
 if playground:
+    pass
     exit()
-######################
+##############
 
-#
-# Define Road Characteristics
-# Each road must have:
-#   length - road segment length (in km)
-#   vmax   - max speed (in km/h)
-#   source - binary selection if source(1)/not(0)
-#   sink   - binary selection if sink(1)/not(0)
-#   demand - demand function of density
-#   supply - supply function of density
-#
-# If a road is a source or sink:
-#   change source(1)/sink(1) to the function
-#   demand_upstream (source) or supply_downstream (sink)
-#   a function of time and returns a flow (in veh/hr)
-#
-# Define a new road by network[road] with road = 1, 2, 3, ..., n
-# the network object is a nested dictionary
-# network = {road_1: {'length_1': ___, 'vmax_1': ___, 'source_1': ___, 'sink_1': ___, 'demand_1': ___, 'supply_1': ___},
-#             ...
-#            road_n: {'length_n': ___, 'vmax_n': ___, 'source_n': ___, 'sink_n': ___, 'demand_n': ___, 'supply_n': ___}
-#           }
-#
-network = {}
+# From define_map.py file
+#   read network and junction info
+network = define_map.network
+junction_info = define_map.junction_info
 
-# Road 1
-network[1] = {'length': 5, 'vmax': 90, 'source': 1, 'sink': 0}
-def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
-def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-network[1]['demand'] = demand
-network[1]['supply'] = supply
-def demand_upstream(t): return 0
-network[1]['source'] = demand_upstream
+# Check for input errors in define_map.py
+error_info = {'mis_attr': 0,
+              'attr_typ': 0,
+              'tdm_row_sum': 0,
+              'tdm_shape': 0,
+              'rd_id_er': 0}
+error_description = {'mis_attr': 'missing attribute',
+                     'attr_typ': 'wrong attribute type',
+                     'tdm_row_sum': 'TDM row sum error',
+                     'tdm_shape': 'TDM shape error',
+                     'rd_id_er': 'road-junction ID mismatch'}
+error_message = ''
+jn_inout = {'in': [], 'out': []}
 
-# Road 2
-network[2] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
-def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
-def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-network[2]['demand'] = demand
-network[2]['supply'] = supply
-def supply_downstream(t): return 10000
-network[2]['sink'] = supply_downstream
+for junction in junction_info:
 
-# Road 3
-network[3] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 0}
-def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
-def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-network[3]['demand'] = demand
-network[3]['supply'] = supply
+    # Check all junction attributes are present
+    junction_keys = list(junction_info[junction].keys())
+    junction_keys.sort()
+    if junction_keys != ['in', 'out', 'tdm']:
+        error_message += 'Badly defined junction {} \n'.format(junction)
+        error_info['mis_attr'] += junction_keys != ['in', 'out', 'tdm']
 
-# Road 4
-network[4] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
-def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
-def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-network[4]['demand'] = demand
-network[4]['supply'] = supply
-def supply_downstream(t): return 10000
-network[4]['sink'] = supply_downstream
+    # Check junction info data types
+    for in_road in junction_info[junction]['in']+junction_info[junction]['out']:  # in/out roads
+        if (not isinstance(in_road, int)) or in_road > len(network) or in_road <= 0:
+            error_info['attr_typ'] += 1
+            error_message += 'Badly defined in/out road ID in junction {} \n'.format(junction)
 
-# Road 5
-network[5] = {'length': 5, 'vmax': 90, 'source': 0, 'sink': 1}
-def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
-def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
-network[5]['demand'] = demand
-network[5]['supply'] = supply
-def supply_downstream(t): return 10000
-network[5]['sink'] = supply_downstream
+    allowed_types = (int, float)
+    for row in junction_info[junction]['tdm'].tolist():  # tdm elements
+        for a in row:
+                if not isinstance(a, allowed_types):
+                    error_info['attr_typ'] += 1
+                    error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
+        # Check row sum
+        if abs(1 - sum(row)) >= 1e-3:
+            error_info['tdm_row_sum'] += 1
+            error_message += 'Incorrect TDM row sum, in junction {} \n'.format(junction)
 
-# Define Junction Characteristics
-# To unambiguously describe a traffic network, a description of the junctions is required
-# Each junction i in (1, n) must be prescribed:
-#   in  - a list of the road indexes which feed traffic IN to junction i
-#   out - a lsit of the road indexes which lead OUT from junction i
-#   tdm - a unique traffic distribution matrix
-#
-# The Traffic Distribution Matrix, A
-#   The general junction with m incoming roads and n outgoing roads
-#   A has m rows, n columns
-#   The elements A=(a)_mn describe the proportion of traffic leaving incoming road m and travelling on outgoing road n
-#   The sum of a_mn over index m is 1, as all traffic must leave its current road and also be conserved
-#
-junction_info = {}
+    # Check TDM matches in/out roads
+    shape = junction_info[junction]['tdm'].shape
+    junction_roads = [len(junction_info[junction]['in']), len(junction_info[junction]['out'])]
+    if (shape[0]!=junction_roads[0]) or (shape[1]!=junction_roads[1]):
+        error_info['tdm_shape'] += 1
+        error_message += 'Mismatch TDM shape and in/out roads, in junction {} \n'.format(junction)
 
-# Junction 1
-junction_info[1] = {'in': [1], 'out': [2, 3], 'tdm': np.array([[0.5, 0.5]])}
-junction_info[2] = {'in': [3], 'out': [4, 5], 'tdm': np.array([[0.5, 0.5]])}
+    # In/Out list
+    for in_id in junction_info[junction]['in']:
+        jn_inout['in'].append(in_id)
+    for out_id in junction_info[junction]['out']:
+        jn_inout['out'].append(out_id)
+
+for road in network:
+
+    #Check all road attributes are present
+    network_keys = list(network[road].keys())
+    network_keys.sort()
+    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
+        error_message += 'Badly defined road {} \n'.format(road)
+        error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
+
+    # Check correct road attribute types
+    for attr in network_keys:
+        if attr in ['demand', 'supply']:
+            # Supply and demand should be functions of density
+            if not callable(network[road][attr]):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['length', 'vmax']:
+            # Length and vmax should be real numbers
+            allowed_types = (int, float)
+            if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+        elif attr in ['source', 'sink']:
+            # Source and sink values can be either 0 or a function
+            if not (network[road][attr]==0 or callable(network[road][attr])):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined {} in road {} \n'.format(attr, road)
+
+    # Check road-junction index matching
+    if len(network)>1:
+        if network[road]['source'] != 0:
+            # Source roads only go IN to junctions
+            if road in jn_inout['out']:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for source road {}'.format(road)
+
+            # Source road goes in to ONE junction only
+            if jn_inout['in'].count(road) != 1:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for source road {}'.format(road)
+
+        elif network[road]['sink'] != 0:
+            # Sink roads only come OUT of junctions
+            if road in jn_inout['in']:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for sink road {}'.format(road)
+
+            # Sink road comes out of ONE junction only
+            if jn_inout['out'].count(road) != 1:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for sink road {}'.format(road)
+
+        else:
+            # Inner roads should be on both sides
+            if jn_inout['in'].count(road)+jn_inout['out'].count(road) < 2:
+                error_info['rd_id_er'] += 1
+                error_message += 'Bad ID for internal road {}'.format(road)
+
+# Get total number of all errors
+error_total = 0
+for error_type in error_info:
+    error_total += error_info[error_type]
+
+# Print input error and exit program
+if error_total >= 1:
+    print('ERROR : Found', error_total, 'error(s)')
+    print('\nError breakdown:')
+    for err in error_info:
+        if error_info[err] != 0:
+            print('{} {}'.format(error_info[err], error_description[err]))  # Breakdown
+    print('\nError message(s):')
+    print(error_message)  # Messages
+    exit(1)
+else:
+    # No errors
+    pass
+
 
 # Initialise for road loop
 global_flows = {}  # To store each road's junction in/outflow
@@ -130,9 +187,9 @@ global_flows = {}  # To store each road's junction in/outflow
 #                }
 #
 V_max = network[1]['vmax']-1e-3  # Global maximum network speed
-total_length = 0  # Total network length
-sources = []  # list of source-road indexes
-sinks = []  # list of sink-road indexes
+total_length = 0                 # Total network length
+sources = []                     # list of source-road indexes
+sinks = []                       # list of sink-road indexes
 # Road loop
 for road in network:
 
@@ -142,12 +199,11 @@ for road in network:
 
     total_length += network[road]['length']  # add up all road lengths
 
-    if network[road]['source'] != 0:
-        sources.append(road)
-    elif network[road]['sink'] != 0:
-        sinks.append(road)
+    # Create source and sink lists
+    if network[road]['source'] != 0: sources.append(road)
+    if network[road]['sink'] != 0: sinks.append(road)
 
-# Geometry and junctions (map) defined
+# Geometry and junctions (map) defined, errors checked
 time1 = time.time()
 
 # Number of road sections
@@ -168,11 +224,13 @@ dt = dx/(CFL*V_max)  # [hr]
 # Spatial grid
 x = np.arange(dx/2, total_length+dx/2, dx)
 
-# Define initial global density profile
+# Initial density profile
 Rho_0 = np.zeros(len(x))
+#### INPUT ####
+# Define initial global density profile
 for i in range(0, len(x)):
-    if x[i] <= 1:
-        Rho_0[i] = 100
+    Rho_0[i] = 0
+
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
@@ -180,20 +238,31 @@ n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
+# Get road start and end index function
+def get_start_end(road_id):
+    fn_start = 0
+    for fn_road_index in range(1, road_id):
+        fn_start += int(network[fn_road_index]['length'] / dx)
+    fn_end = fn_start + int(network[road_id]['length'] / dx) - 1
+
+    return [fn_start, fn_end]
+
+
 # Godunov solver function
-def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
+def godunov(network_section, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
 
     # road length
-    length = network['length']
+    length = network_section['length']
 
     # number of x points
     n_x = int(length / dx)
 
+    # initialise density array
     rho = np.zeros(len(Rho_0))
 
     # Get current road supply and demand
-    supply = network['supply']
-    demand = network['demand']
+    supply = network_section['supply']
+    demand = network_section['demand']
 
     # types list for callable function or non-callable number
     allowed_types = (np.float64, int, np.int64)
@@ -221,7 +290,7 @@ def godunov(network, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
     return rho
 
 # Junction flow function
-def junction(network,A,rho_0, junction_number):
+def junction(network_section,A,rho_0, junction_number):
 
     # Get number of in and out roads
     n_in = len(junction_info[junction_number]['in'])
@@ -232,26 +301,30 @@ def junction(network,A,rho_0, junction_number):
 
     # Get demand and supply functions
     # Evaluate at the appropriate boundary density
+    # Only need the demand of last cells on in roads
+    #           and supply of first cells on out roads
     # Road IN - demand f'n
     for df_i in range(0, n_in):
         road_identifier = junction_info[junction_number]['in'][df_i]
-        sup_dem[df_i] = network[road_identifier]['demand'](rho_0[df_i])
+        sup_dem[df_i] = network_section[road_identifier]['demand'](rho_0[df_i])
 
     # Road OUT - supply f'n
     for sf_i in range(0, n_out):
         road_identifier = junction_info[junction_number]['out'][sf_i]
-        sup_dem[n_in + sf_i] = network[road_identifier]['supply'](rho_0[n_in + sf_i])
+        sup_dem[n_in + sf_i] = network_section[road_identifier]['supply'](rho_0[n_in + sf_i])
 
     # Initialise empty flows output array
     flows = np.zeros(len(rho_0))
 
     # Fill with values
     for flow_i in range(0, len(flows)):
+        # Fill each flows element
+
         if flow_i <= n_in-1:
             # These are the supply of in-roads
 
-            # Create supply min list
-            sup_min_proportion = sup_dem[flow_i+n_in]/A[flow_i, 0]
+            # Smallest demands of all outgoing roads
+            sup_min_proportion = sup_dem[n_in]/A[flow_i, 0]
             for out_i in range(1, n_out):
                 sup_min_proportion = min(sup_min_proportion, sup_dem[out_i+n_in]/A[flow_i, out_i])
 
@@ -260,13 +333,10 @@ def junction(network,A,rho_0, junction_number):
         else:
             # These are the demands of out-roads
 
-            # Construct the sum q_out(j)=sum_j(A(i,j)*q_in(i))
-            flow_out = 0
+            # Sum of partial flow contribution from each in road
+            flows[flow_i] = 0
             for in_i in range(0, n_in): # for all i in roads
-                flow_out += A[in_i, flow_i-n_in]*flows[in_i]
-
-            # Calculate the out-road new boundary flow
-            flows[flow_i] = flow_out
+                flows[flow_i] += A[in_i, flow_i-n_in]*flows[in_i]
 
     return flows
 
@@ -275,7 +345,7 @@ time2 = time.time()
 
 # Time loop
 for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-# for t in np.arange(dt, T, dt):  # loop without progress bar
+#for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -290,7 +360,6 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
 
         # Initialise an empty array for boundary densities
         rho_0 = np.zeros(len(roads_in)+len(roads_out))
-        rho_0_index_values = np.zeros(len(roads_in)+len(roads_out))
 
         # Fill these boundary densities
         #   with the end of in-roads and the start of out-roads
@@ -300,37 +369,38 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
             road_identifier = (roads_in+roads_out)[rho_0_index]
 
             # Get road start and end indexes
-            start = 0
-            for road_index in range(1, road_identifier):
-                start += int(network[road_index]['length'] / dx)
-            end = start + int(network[road_identifier]['length'] / dx) - 1
+            [start, end] = get_start_end(road_identifier)
 
-            # extract apropriate boundary elements
+            # extract appropriate boundary elements
             if rho_0_index <= len(roads_in)-1:
-                # first len(roads_in) rho_0 elements are for in-road ends
+                # in-road end
                 rho_0[rho_0_index] = Rho[i, end]
             else:
-                # later rho_0 elements are out-road starts
+                # out-road start
                 rho_0[rho_0_index] = Rho[i, start]
 
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
 
-        # Store each road's new supply/demand
+        # Store each road's new supply/demand in global_flows
         for local_flow_i in range(0, len(local_flows)):
             local_flow_val = local_flows[local_flow_i]
+
             if local_flow_i < len(roads_in):
+                # in-road
                 road_identifier = junction_info[junction_index]['in'][local_flow_i]
                 global_flows[road_identifier]['supply'] = local_flow_val
             else:
+                # out-road
                 road_identifier = junction_info[junction_index]['out'][local_flow_i-len(roads_in)]
                 global_flows[road_identifier]['demand'] = local_flow_val
 
-    # Fill the source/sink supply/demand values in global_flows
+    # Fill the network source/sink supply/demand values in global_flows
     for source in sources:
         global_flows[source]['demand'] = network[source]['source']
     for sink in sinks:
         global_flows[sink]['supply'] = network[sink]['sink']
+
 
     # Network global supply/demand definitions
     def net_glob_demand(road, t):
@@ -354,16 +424,14 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
     # Each road separately
     for road in network:
 
-        # Update the new 'initial' density as the previous-time-step solution
-        start = 0
-        for road_index in range(1, road):
-            start += int(network[road_index]['length'] / dx)
+        # Get start and end indexes
+        [start, end] = get_start_end(road)
 
-        end = start + int(network[road]['length'] / dx)
-        rho_0 = Rho[i, start:end]
+        # Update the new 'initial' density as the previous-time-step solution
+        rho_0 = Rho[i, start:end+1]
 
         # Run Godunov for each road over a single time step
-        Rho[i+1, start:end] = godunov(network[road],
+        Rho[i+1, start:end+1] = godunov(network[road],
                                       rho_0,
                                       net_glob_demand(road, t),
                                       net_glob_supply(road, t),
@@ -373,24 +441,82 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
 # Time loop completed
 time3 = time.time()
 
-# Update the saved density profile in pwd
-os.remove('density.txt')
-np.savetxt('density.txt', Rho)
+# Chose to save or not
+do_print = False
+
+# Save density profile
+if do_print:
+    # Create output folder
+    if not os.path.exists('Simulation_Results'): os.mkdir('Simulation_Results')
+    path = 'Simulation_Results/'+str(datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
+    os.mkdir(path)
+
+    # Update the saved density profile in pwd
+    density_output = path + '/density.txt'
+    np.savetxt(density_output, Rho)
+else:
+    # Developing runs
+    os.remove('density.txt')
+    np.savetxt('density.txt', Rho)
 
 # Results saved - program complete
 time4 = time.time()
 
 # Print program times
-do_print = False
 if do_print:
-    print('\n')
-    print('  Program time statistics')
-    print('  -----------------------------------')
-    print('  Total program time : {0:.4e} [s]'.format(time4-time0))
-    print('  Defining map       : {0:.4e} [s]'.format(time1-time0))
-    print('  Initialising       : {0:.4e} [s]'.format(time2-time1))
-    print('  Time loop          : {0:.4e} [s]'.format(time3-time2))
-    print('  Save results       : {0:.4e} [s]'.format(time4-time3))
+    # Overwrite file (comment out)
+    filename = path + '/simulation_info.txt'
 
+    # Write and open file
+    info_txt = open(filename, 'w+')
+    info_txt.write('TFM Simulation Information \n\n')
+    now = datetime.datetime.now()
+    info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
+
+    # Time breakdown
+    info_txt.write('\n\nTime breakdown:\n')
+    info_txt.write('{:30s} {:.10s}\n'.format('Code Section', 'Time [s]'))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Defining map and error check', time1-time0))
+    info_txt.write('{:30s} {:.6e}\n'.format('Initialising', time2-time1))
+    info_txt.write('{:30s} {:.6e}\n'.format('Time loop', time3-time2))
+    info_txt.write('{:30s} {:.6e}\n'.format('Save results', time4-time3))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Total program time', time4-time0))
+    info_txt.write('----------------------------------------------\n')
+
+    # File code line count
+    num_lines = {}
+    files = ['main.py', 'define_map.py', 'params.txt']
+    for file in files:
+        num_lines[file] = 0
+        with open(file, 'r') as f:
+            for line in f:
+                num_lines[file] += 1
+    num_lines['Total'] = 0
+
+    info_txt.write('\n\nLine Count:\n')
+    info_txt.write('{: <30} {: <20}\n'.format('File', 'Number of Lines'))
+    info_txt.write('----------------------------------------------\n')
+    for file in num_lines:
+        if file=='Total':
+            info_txt.write('----------------------------------------------\n')
+            info_txt.write('{: <30} {: <20}\n'.format(file, num_lines[file]))
+            info_txt.write('----------------------------------------------\n')
+        else:
+            info_txt.write('{: <30} {: <20}\n'.format(file, num_lines[file]))
+        num_lines['Total'] += num_lines[file]
+
+    # Write memory information
+    info_txt.write('\n\nOutput File Memory:\n')
+    info_txt.write('{:30} {:}\n'.format('File', 'Size [MB]'))
+    info_txt.write('----------------------------------------------\n')
+    info_txt.write('{0:30} {1:5.3f}\n'.format('density.txt',os.stat('density.txt').st_size / 1000000))
+    info_txt.write('----------------------------------------------\n')
+
+    # Close file
+    info_txt.close()
+
+time.sleep(1)
 print('Done')
 exit()
