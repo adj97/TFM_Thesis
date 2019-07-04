@@ -26,7 +26,8 @@ from tqdm import tqdm                    # progressbar in time loop
 import time                              # recording execution time
 import json                              # read json format parameter file
 import define_map                        # separate python file for network and junction info
-import WenoReconstruction                # |----------"-----------| 5th order WENO reconstruction
+import WENOReconstruction                # |----------"-----------| WENO reconstructions
+import MUSCLReconstruction                # |----------"-----------| WENO reconstructions
 
 # Start time
 time0 = time.time()
@@ -241,8 +242,13 @@ n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
-# WENO reconstruction definition
-weno5 = WenoReconstruction.weno5
+# WENO reconstruction definitions
+weno5 = WENOReconstruction.weno5
+weno7 = WENOReconstruction.weno7
+
+# MUSCL reconstruction definitions
+muscl2 = MUSCLReconstruction.muscl2
+muscl3 = MUSCLReconstruction.muscl2
 
 # Get road start and end index function
 def get_start_end(road_id):
@@ -369,14 +375,22 @@ def spatial_reco(reconstruction_type):
         elif reconstruction_type =='WENO7':
             # 7th-Order Weighted Essentially Non-Oscillatory reconstruction
 
+            [left, right] = weno7(cell_id, rho_ghost)
+
             print('7th order WENO scheme')
+            print('At the moment the weno5 and weno7 functions are both 5th order')
+            print('Need to make weno7 actually seventh order, k=5')
             exit()
 
-        elif reconstruction_type == 'MUSCL':
+        elif reconstruction_type == 'MUSCL2':
             # 2nd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
 
-            print('MUSCL scheme')
-            exit()
+            [left, right] = muscl2(cell_id, rho_ghost)
+
+        elif reconstruction_type == 'MUSCL3':
+            # 3rd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
+
+            [left, right] = muscl3(cell_id, rho_ghost)
 
         else:  # Wrong reconstruction specifier
 
@@ -410,8 +424,8 @@ def net_glob_supply(road, t):
 time2 = time.time()
 
 # Time loop
-for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-# for t in np.arange(dt, T, dt):          # loop without progress bar
+# for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
