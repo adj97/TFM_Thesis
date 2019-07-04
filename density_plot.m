@@ -1,5 +1,5 @@
 %% Setup 
-clear all
+clear density frames i length
 close all
 clc
 set(0,'DefaultFigureWindowStyle','docked') 
@@ -7,17 +7,78 @@ set(0,'DefaultFigureWindowStyle','docked')
 % Read in
 density=dlmread('density.txt');
 
-% Simple Plot density profile
-[frames, length]=size(density);
-maximum=max(max(density));
+% split
+road1 = density(:,1:50);
+road2 = density(:, 51:100);
+road3 = density(:,101:150);
+road4 = density(:, 151:200);
+road5 = density(:,201:250);
+road6 = density(:, 251:300);
+clear density
 
-for i=1:frames
-    plot(1:length,density(i,:),'o')
+% Simple Plot density profile
+[frames, length]=size(road1);
+maximum = max(max(road1));
+
+for i=1:340
+    subplot(2,4,[1 5])
+    plot(0:length-1,road1(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road1(i,:),'b-')
+    plot(0:length-1,so_road1(i,:),'g-')
+    hold off
+    legend('WENO','1st', '2nd')
+    title(sprintf('Frame %d', i))
     xlim([0 length])
-    ylim([0 maximum*1.1])
+    ylim([0 maximum])
+    
+    subplot(2,4,2)
+    plot(0:length-1,road2(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road2(i,:),'b-')
+    plot(0:length-1,so_road2(i,:),'g-')
+    hold off
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,6)
+    plot(0:length-1,road3(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road3(i,:),'b-')
+    plot(0:length-1,so_road3(i,:),'g-')
+    hold off
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,3)
+    plot(0:length-1,road4(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road4(i,:),'b-')
+    plot(0:length-1,so_road4(i,:),'g-')
+    hold off
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,7)
+    plot(0:length-1,road5(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road5(i,:),'b-')
+    plot(0:length-1,so_road5(i,:),'g-')
+    hold off
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,[4 8])
+    plot(0:length-1,road6(i,:),'r-')
+    hold on
+    plot(0:length-1,fo_road6(i,:),'b-')
+    plot(0:length-1,so_road6(i,:),'g-')
+    hold off
+    xlim([0 length])
+    ylim([0 maximum])
+    
     pause()
 end
-
 
  %% network plot
  

@@ -21,10 +21,12 @@ from __future__ import print_function    # print no new line
 import os                                # standard
 import datetime
 import numpy as np                       # numerical programming
+import math                              # mathematical functions
 from tqdm import tqdm                    # progressbar in time loop
 import time                              # recording execution time
 import json                              # read json format parameter file
 import define_map                        # separate python file for network and junction info
+import WenoReconstruction                # |----------"-----------| 5th order WENO reconstruction
 
 # Start time
 time0 = time.time()
@@ -100,7 +102,7 @@ for road in network:
     #Check all road attributes are present
     network_keys = list(network[road].keys())
     network_keys.sort()
-    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
+    if network_keys != ['demand', 'dmax', 'length', 'sink', 'source', 'supply', 'vmax']:
         error_message += 'Badly defined road {} \n'.format(road)
         error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
 
@@ -112,7 +114,7 @@ for road in network:
                 error_info['attr_typ'] += 1
                 error_message += 'Badly defined {} in road {} \n'.format(attr, road)
 
-        elif attr in ['length', 'vmax']:
+        elif attr in ['length', 'vmax', 'dmax']:
             # Length and vmax should be real numbers
             allowed_types = (int, float)
             if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
@@ -217,6 +219,7 @@ with open('params.txt') as file:
 dx = params['dx']  # Spatial resolution [km]
 T = params['T']  # Final time [hr]
 CFL = params['CFL']  # Courant-Friedrichs-Lewy (CFL) safety factor constraint
+reconstruction = params['reconstruction']
 
 # Time resolution from CFL constraint
 dt = dx/(CFL*V_max)  # [hr]
@@ -229,14 +232,17 @@ Rho_0 = np.zeros(len(x))
 #### INPUT ####
 # Define initial global density profile
 for i in range(0, len(x)):
-    Rho_0[i] = 0
-
+    if x[i] < 1:
+        Rho_0[i] = 10
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
 n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
+
+# WENO reconstruction definition
+weno5 = WenoReconstruction.weno5
 
 # Get road start and end index function
 def get_start_end(road_id):
@@ -247,50 +253,13 @@ def get_start_end(road_id):
 
     return [fn_start, fn_end]
 
-
-# Godunov solver function
-def godunov(network_section, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
-
-    # road length
-    length = network_section['length']
-
-    # number of x points
-    n_x = int(length / dx)
-
-    # initialise density array
-    rho = np.zeros(len(Rho_0))
-
-    # Get current road supply and demand
-    supply = network_section['supply']
-    demand = network_section['demand']
-
-    # types list for callable function or non-callable number
-    allowed_types = (np.float64, int, np.int64)
-
-    # first cell
-    j = 0
-    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, allowed_types) else f_demand_upstream((i+1)*dt)
-    inflow = min(temp_demand_upstream, supply(Rho_0[j]))
-    outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
-    rho[j] = Rho_0[j]+(dt/dx)*(inflow - outflow)
-    inflow = outflow
-
-    # internal cells
-    for j in range(1, n_x-1):
-        outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
-        rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
-        inflow = outflow
-
-    # end cell
-    j = n_x-1
-    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, allowed_types) else f_supply_downstream((i+1)*dt)
-    outflow = min(demand(Rho_0[j]), temp_supply_downstream)
-    rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
-
-    return rho
+# Minmod slope limiter function
+def minmod(arg1,arg2):
+    min_mod = 0.5*(math.copysign(1.0,arg1)+math.copysign(1.0,arg2))*min(abs(arg1),abs(arg2))
+    return min_mod
 
 # Junction flow function
-def junction(network_section,A,rho_0, junction_number):
+def junction(network_section, A, rho_0, junction_number):
 
     # Get number of in and out roads
     n_in = len(junction_info[junction_number]['in'])
@@ -340,12 +309,109 @@ def junction(network_section,A,rho_0, junction_number):
 
     return flows
 
+# Velocity model function u=u(rho)
+def velocity_model(road_section, density):
+
+    # Greenshield's
+    u_f = road_section['vmax']
+    d_m = road_section['dmax']
+    velocity_value = u_f*(1-density/d_m)
+
+    return velocity_value
+
+# Compute the numerical flux
+def compute_flux(CdL, CdR, FlL, FlR):
+
+    # Describe value
+    # CdL/CdR - conserved left/right density
+    # FlL/FlR - physical left/right flux
+
+    # Lax-Friedrichs
+    flux_value = 0.5*(FlL+FlR)-0.5*(dx/dt)*(CdR-CdL)
+
+    # HLL
+    # aL = compute_soundspeed()
+
+    return flux_value
+
+# Spatial reconstruction
+def spatial_reco(reconstruction_type):
+
+    # Create array
+    output_array = np.zeros((len(CellFluxes)+1, 2))
+
+    # Loop over all cells
+    for cell_id in range(0, len(output_array)):
+
+        if reconstruction_type == 'FirstOrder':
+            # First order reconstruction
+            left = rho_ghost[cell_id]
+            right = rho_ghost[cell_id]
+
+        elif reconstruction_type == 'SecondOrder':
+            # 2nd order minmod reconstruction
+
+            # Right
+            xmr = rho_ghost[cell_id] - rho_ghost[cell_id - 1]
+            ymr = rho_ghost[cell_id + 1] - rho_ghost[cell_id]
+            right = rho_ghost[cell_id] + 0.5 * minmod(xmr, ymr)
+
+            # Left
+            xml = rho_ghost[cell_id] - rho_ghost[cell_id-1]
+            yml = rho_ghost[cell_id + 1] - rho_ghost[cell_id]
+            left = rho_ghost[cell_id] - 0.5 * minmod(xml, yml)
+
+        elif reconstruction_type == 'WENO5':
+            # 5th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            [left, right] = weno5(cell_id, rho_ghost)
+
+        elif reconstruction_type =='WENO7':
+            # 7th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            print('7th order WENO scheme')
+            exit()
+
+        elif reconstruction_type == 'MUSCL':
+            # 2nd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
+
+            print('MUSCL scheme')
+            exit()
+
+        else:  # Wrong reconstruction specifier
+
+            print('ERROR: Wrong reconstruction specifier')
+            exit(1)
+
+        output_array[cell_id] = [left, right]
+    return output_array
+
+# Network global demand
+def net_glob_demand(road, t):
+
+    if road in sources:
+        n_g_d = global_flows[road]['demand'](t)
+    else:
+        n_g_d = global_flows[road]['demand']
+
+    return n_g_d
+
+# Network global supply
+def net_glob_supply(road, t):
+
+    if road in sinks:
+        n_g_s = global_flows[road]['supply'](t)
+    else:
+        n_g_s = global_flows[road]['supply']
+
+    return n_g_s
+
 # Functions and arrays created
 time2 = time.time()
 
 # Time loop
 for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-#for t in np.arange(dt, T, dt):          # loop without progress bar
+# for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -401,26 +467,6 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
     for sink in sinks:
         global_flows[sink]['supply'] = network[sink]['sink']
 
-
-    # Network global supply/demand definitions
-    def net_glob_demand(road, t):
-
-        if road in sources:
-            n_g_d = global_flows[road]['demand'](t)
-        else:
-            n_g_d = global_flows[road]['demand']
-
-        return n_g_d
-
-    def net_glob_supply(road, t):
-
-        if road in sinks:
-            n_g_s = global_flows[road]['supply'](t)
-        else:
-            n_g_s = global_flows[road]['supply']
-
-        return n_g_s
-
     # Each road separately
     for road in network:
 
@@ -430,13 +476,100 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
         # Update the new 'initial' density as the previous-time-step solution
         rho_0 = Rho[i, start:end+1]
 
-        # Run Godunov for each road over a single time step
-        Rho[i+1, start:end+1] = godunov(network[road],
-                                      rho_0,
-                                      net_glob_demand(road, t),
-                                      net_glob_supply(road, t),
-                                      dx,
-                                      dt)
+        # number of x points
+        n_x = int(network[road]['length'] / dx)
+
+        # initialise density array
+        rho1 = Rho[i + 1, start:end + 1]
+        rho2 = Rho[i + 1, start:end + 1]
+        rho3 = Rho[i + 1, start:end + 1]
+
+        # Get current road supply and demand
+        supply = network[road]['supply']
+        demand = network[road]['demand']
+
+        # types list for callable function or non-callable number
+        allowed_types = (np.float64, int, np.int64)
+
+        # incoming flow
+        f_demand_upstream = net_glob_demand(road, t)
+        f_supply_downstream = net_glob_supply(road, t)
+
+        # Runge-Kutta steps
+        for RK in range(0, 3):
+
+            # Chose the most updated array for flux calculation
+            if RK == 0:
+                rho_flux = rho_0
+            elif RK == 1:
+                rho_flux = rho1
+            elif RK == 2:
+                rho_flux = rho2
+
+            # Add in ghost BCs
+            rho_ghost = np.append(rho_flux, [rho_flux[-2], rho_flux[-3], rho_flux[2], rho_flux[1]])
+
+            # Initialise cell flux array
+            CellFluxes = np.zeros(len(rho_0))
+
+            # Save all reconstructed L and R states in an array size len(CellFluxes) X 2
+            reconstructed = spatial_reco(reconstruction)
+
+            # Compute each cell RHS interface flux
+            for cell_id in range(0,len(CellFluxes)):
+
+                # Reconstruction : Get L and R conserved(C) densities
+                CL = reconstructed[cell_id, 1]
+                CR = reconstructed[cell_id+1, 0]
+
+                # Get L and R physical flux(F)
+                FL = CL*velocity_model(network[road], CL)
+                FR = CR*velocity_model(network[road], CR)
+
+                # Calculate flux
+                CellFluxes[cell_id] = compute_flux(CL, CR, FL, FR)
+
+            # Update
+
+            # first cell
+            j = 0
+            temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, allowed_types) else f_demand_upstream((i+1)*dt)
+            use = temp_demand_upstream - CellFluxes[j]
+
+            if RK == 0:
+                rho1[j] = rho_0[j] + (dt / dx) * use
+            elif RK == 1:
+                rho2[j] = 0.75 * rho_0[j] + 0.25 * rho1[j] + 0.25 * (dt / dx) * use
+            elif RK == 2:
+                rho3[j] = (1 / 3) * rho_0[j] + (2 / 3) * rho2[j] + (2 / 3) * (dt / dx) * use
+            if road in sources:
+                rho1[j] = global_flows[road]['demand'](0)
+                rho2[j] = global_flows[road]['demand'](0)
+                rho3[j] = global_flows[road]['demand'](0)
+
+            # internal cells
+            for j in range(1, n_x-1):
+                use = CellFluxes[j - 1] - CellFluxes[j]
+                if RK == 0:
+                    rho1[j] = rho_0[j] + (dt / dx) * use
+                elif RK == 1:
+                    rho2[j] = 0.75*rho_0[j] + 0.25*rho1[j] + 0.25*(dt / dx) * use
+                elif RK == 2:
+                    rho3[j] = (1/3) * rho_0[j] + (2/3) * rho2[j] + (2/3) * (dt / dx) * use
+
+            # last cell
+            j = n_x-1
+            temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, allowed_types) else f_supply_downstream((i + 1) * dt)
+            outflow = min(CellFluxes[j], f_supply_downstream)
+            use = CellFluxes[j - 1] - outflow
+            if RK == 0:
+                rho1[j] = rho_0[j] + (dt / dx) * use
+            elif RK == 1:
+                rho2[j] = 0.75 * rho_0[j] + 0.25 * rho1[j] + 0.25 * (dt / dx) * use
+            elif RK == 2:
+                rho3[j] = (1 / 3) * rho_0[j] + (2 / 3) * rho2[j] + (2 / 3) * (dt / dx) * use
+
+        Rho[i+1, start:end+1] = rho3
 
 # Time loop completed
 time3 = time.time()
