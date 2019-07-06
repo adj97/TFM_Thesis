@@ -1,4 +1,3 @@
-import numpy as np  # numerical programming
 import json         # read json format parameter file
 
 # Monotonic Upwind Scheme for Conservation Laws
@@ -94,94 +93,94 @@ def limiter(r):
     # These limiters are given in
     #   https://en.wikipedia.org/wiki/Flux_limiter
 
-    if chosen_limiter == "charm":
+    if chosen_limiter == "Charm":
         # Charm
         # Zhou, 1995
         # not 2nd order TDV accurate
         limited_slope = r*(3*r+1)/((r+1)**2) if r > 0 else 0
 
-    if chosen_limiter == "hcus":
+    elif chosen_limiter == "HCUS":
         # HCUS
         # Waterson & Deconinck, 1995
         # not 2nd order TDV accurate
         limited_slope = 1.5*(r+abs(r))/(r+2)
 
-    if chosen_limiter == "hquick":
+    elif chosen_limiter == "HQUICK":
         # HQUICK
         # Waterson & Deconinck, 1995
         # not 2nd order TDV accurate
         limited_slope = 2*(r+abs(r))/(r+3)
 
-    if chosen_limiter == "koren":
+    elif chosen_limiter == "Koren":
         # Koren
         # Koren, 1993
         # 3rd order TDV accurate for sufficiently smooth data
         limited_slope = max(0, min(2*r, min((1+2*r)/3, 2)))
 
-    if chosen_limiter == "minmod":
+    elif chosen_limiter == "MinMod":
         # MinMod
         # Roe, 1986
         # 2nd order TDV accurate
         limited_slope = max(0, min(1, r))
 
-    if chosen_limiter == "mc":
+    elif chosen_limiter == "MonotonizedCentral":
         # Monotonized Central
         # van Leer, 1977
         # 2nd order TDV accurate
         limited_slope = max(0, min(2*r, (1+r)/2, 2))
 
-    if chosen_limiter == "osher":
+    elif chosen_limiter == "Osher":
         # Osher
         # Chakravarthy & Osher, 1983
         # 2nd order TDV accurate
         b = 1.5
         limited_slope = max(0, min(r, b))
 
-    if chosen_limiter == "ospre":
+    elif chosen_limiter == "Ospre":
         # Ospre
         # Waterson & Deconinck, 1995
         # 2nd order TDV accurate, symmetric
         limited_slope = 1.5*(r**2+r)/(r**2+r+1)
 
-    if chosen_limiter == "smart":
+    elif chosen_limiter == "Smart":
         # Smart
         # Gaskell & Lau, 1988
         # not 2nd order TDV accurate
         limited_slope = max(0, min(2*r, (1+3*r)/4, 4))
 
-    if chosen_limiter == "superbee":
+    elif chosen_limiter == "Superbee":
         # Superbee
         # Roe, 1986
         # 2nd order TDV accurate, symmetric
         limited_slope = max(0, min(2*r,1), min(r,2))
 
-    if chosen_limiter == "sweby":
+    elif chosen_limiter == "Sweby":
         # Sweby
         # Sweby, 1984
         # not 2nd order TDV accurate, symmetric
         b = 1.5
         limited_slope = max(0, min(b*r,1), min(r,b))
 
-    if chosen_limiter == "umist":
+    elif chosen_limiter == "UMIST":
         # UMIST
         # Lien & Leschziner, 1994
         # 2nd order TDV accurate
         limited_slope = max(0, min(2*r, (1+3*r)/4, (3+r)/4, 2))
 
-    if chosen_limiter == "vanAlbada1":
+    elif chosen_limiter == "vanAlbada1":
         # van Albada 1
         # van Albada, et al., 1982
         # 2nd order TDV accurate, symmetric
         limited_slope = (r**2+r)/(r**2+1)
 
-    if chosen_limiter == "vanAlbada2":
+    elif chosen_limiter == "vanAlbada2":
         # van Albada 2
         # Kermani, 2003
         # not 2nd order TDV accurate
         # Alternate form for high spatial order schemes
         limited_slope = (2*r)/(r**2+1)
 
-    if chosen_limiter == "vanLeer":
+    elif chosen_limiter == "vanLeer":
         # van Leer
         # van Leer, 1974
         # 2nd order TDV accurate, symmetric

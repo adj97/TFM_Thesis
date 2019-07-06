@@ -21,7 +21,6 @@ from __future__ import print_function    # print no new line
 import os                                # standard
 import datetime
 import numpy as np                       # numerical programming
-import math                              # mathematical functions
 from tqdm import tqdm                    # progressbar in time loop
 import time                              # recording execution time
 import json                              # read json format parameter file
@@ -217,10 +216,10 @@ with open('params.txt') as file:
     params = json.load(file)
 
 # Assign parameters
-dx = params['dx']  # Spatial resolution [km]
-T = params['T']  # Final time [hr]
-CFL = params['CFL']  # Courant-Friedrichs-Lewy (CFL) safety factor constraint
-reconstruction = params['reconstruction']
+dx = params['dx']                             # Spatial resolution [km]
+T = params['T']                               # Final time [hr]
+CFL = params['CFL']                           # Courant-Friedrichs-Lewy (CFL) safety factor constraint
+reconstruction = params['reconstruction']     # Reconstruction scheme
 
 # Time resolution from CFL constraint
 dt = dx/(CFL*V_max)  # [hr]
@@ -243,12 +242,21 @@ Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
 # WENO reconstruction definitions
+weno3 = WENOReconstruction.weno3
 weno5 = WENOReconstruction.weno5
 weno7 = WENOReconstruction.weno7
 
 # MUSCL reconstruction definitions
 muscl2 = MUSCLReconstruction.muscl2
-muscl3 = MUSCLReconstruction.muscl2
+muscl3 = MUSCLReconstruction.muscl3
+
+# Riemann solvers
+
+
+# Specific timers
+junction_time = 0
+reconstruction_time = 0
+RK_update_time = 0
 
 # Get road start and end index function
 def get_start_end(road_id):
@@ -259,10 +267,8 @@ def get_start_end(road_id):
 
     return [fn_start, fn_end]
 
-# Minmod slope limiter function
-def minmod(arg1,arg2):
-    min_mod = 0.5*(math.copysign(1.0,arg1)+math.copysign(1.0,arg2))*min(abs(arg1),abs(arg2))
-    return min_mod
+# Minmod function
+minmod = WENOReconstruction.minmod
 
 # Junction flow function
 def junction(network_section, A, rho_0, junction_number):
@@ -328,15 +334,39 @@ def velocity_model(road_section, density):
 # Compute the numerical flux
 def compute_flux(CdL, CdR, FlL, FlR):
 
-    # Describe value
     # CdL/CdR - conserved left/right density
     # FlL/FlR - physical left/right flux
 
-    # Lax-Friedrichs
-    flux_value = 0.5*(FlL+FlR)-0.5*(dx/dt)*(CdR-CdL)
+    riemann_solver = 'LaxFriedrichs'
 
-    # HLL
-    # aL = compute_soundspeed()
+    if riemann_solver == 'LaxFriedrichs':
+
+        # Lax-Friedrichs
+        flux_value = 0.5*(FlL+FlR)-0.5*(dx/dt)*(CdR-CdL)
+
+    elif riemann_solver == 'Rusanov':
+
+        # Rusanov
+        print('Rusanov Solver')
+        exit()
+
+    elif riemann_solver == 'Murman-Roe':
+
+        # Murman-Roe
+        print('Murman-Roe Solver')
+        exit()
+
+    elif riemann_solver == 'HLL':
+
+        # HLL
+        print('HLL Solver')
+        exit()
+
+    else:  # Wrong flux specifier
+
+        print('ERROR: Wrong flux specifier')
+        exit(1)
+
 
     return flux_value
 
@@ -367,6 +397,11 @@ def spatial_reco(reconstruction_type):
             yml = rho_ghost[cell_id + 1] - rho_ghost[cell_id]
             left = rho_ghost[cell_id] - 0.5 * minmod(xml, yml)
 
+        elif reconstruction_type == 'WENO3':
+            # 5th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            [left, right] = weno3(cell_id, rho_ghost)
+
         elif reconstruction_type == 'WENO5':
             # 5th-Order Weighted Essentially Non-Oscillatory reconstruction
 
@@ -376,11 +411,6 @@ def spatial_reco(reconstruction_type):
             # 7th-Order Weighted Essentially Non-Oscillatory reconstruction
 
             [left, right] = weno7(cell_id, rho_ghost)
-
-            print('7th order WENO scheme')
-            print('At the moment the weno5 and weno7 functions are both 5th order')
-            print('Need to make weno7 actually seventh order, k=5')
-            exit()
 
         elif reconstruction_type == 'MUSCL2':
             # 2nd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
@@ -424,8 +454,8 @@ def net_glob_supply(road, t):
 time2 = time.time()
 
 # Time loop
-# for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-for t in np.arange(dt, T, dt):          # loop without progress bar
+for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
+# for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -459,8 +489,14 @@ for t in np.arange(dt, T, dt):          # loop without progress bar
                 # out-road start
                 rho_0[rho_0_index] = Rho[i, start]
 
+        # Log junction time
+        junction_time -= time.time()
+
         # Call junction to get input/output flows
         local_flows = junction(network, A, rho_0, junction_index)
+
+        # Log junction time
+        junction_time += time.time()
 
         # Store each road's new supply/demand in global_flows
         for local_flow_i in range(0, len(local_flows)):
@@ -521,13 +557,20 @@ for t in np.arange(dt, T, dt):          # loop without progress bar
                 rho_flux = rho2
 
             # Add in ghost BCs
-            rho_ghost = np.append(rho_flux, [rho_flux[-2], rho_flux[-3], rho_flux[2], rho_flux[1]])
+            rho_ghost = np.append(rho_flux, [rho_flux[-2:-5:-1],   # end ghosts
+                                             rho_flux[3:0:-1]])    # start ghosts
 
             # Initialise cell flux array
             CellFluxes = np.zeros(len(rho_0))
 
+            # Log reconstruction time
+            reconstruction_time -= time.time()
+
             # Save all reconstructed L and R states in an array size len(CellFluxes) X 2
             reconstructed = spatial_reco(reconstruction)
+
+            # Log reconstruction time
+            reconstruction_time += time.time()
 
             # Compute each cell RHS interface flux
             for cell_id in range(0,len(CellFluxes)):
@@ -544,6 +587,9 @@ for t in np.arange(dt, T, dt):          # loop without progress bar
                 CellFluxes[cell_id] = compute_flux(CL, CR, FL, FR)
 
             # Update
+
+            # Log Runge-Kutta update time
+            RK_update_time -= time.time()
 
             # first cell
             j = 0
@@ -583,13 +629,17 @@ for t in np.arange(dt, T, dt):          # loop without progress bar
             elif RK == 2:
                 rho3[j] = (1 / 3) * rho_0[j] + (2 / 3) * rho2[j] + (2 / 3) * (dt / dx) * use
 
+            # Log Runge-Kutta update time
+            RK_update_time += time.time()
+
+
         Rho[i+1, start:end+1] = rho3
 
 # Time loop completed
 time3 = time.time()
 
 # Chose to save or not
-do_print = False
+do_print = True
 
 # Save density profile
 if do_print:
@@ -620,6 +670,40 @@ if do_print:
     now = datetime.datetime.now()
     info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
 
+    # Read parameter file
+    with open('params.txt') as file:
+        params = json.load(file)
+
+    # Find required slope limiter
+    chosen_limiter = params['limiter']
+    print_limiter = False  # default
+
+    # Write reconstruction phrases
+    if reconstruction == 'FirstOrder':
+        reconstruction = '1st Order single cell average'
+    elif reconstruction == 'SecondOrder':
+        reconstruction = '2nd Order minmod interpolation'
+    elif reconstruction == 'WENO3':
+        reconstruction = '3rd Order WENO'
+    elif reconstruction == 'WENO5':
+        reconstruction = '5th Order WENO'
+    elif reconstruction == 'WENO7':
+        reconstruction = '7th Order WENO monotonicity preserving bounds'
+    elif reconstruction == 'MUSCL2':
+        reconstruction = '2nd Order MUSCL'
+        print_limiter = True
+    elif reconstruction == 'MUSCL3':
+        reconstruction = '3rd Order MUSCL'
+        print_limiter = True
+
+    # Method information
+    info_txt.write('\n\nMethodology:\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Spatial step', dx))
+    info_txt.write('{:30s} {:.6e}\n'.format('Final time', T))
+    info_txt.write('{:30s} {:.6e}\n'.format('CFL constraint', CFL))
+    info_txt.write('{:30s} {:10s}\n'.format('Reconstruction method', reconstruction))
+    if print_limiter: info_txt.write('{:30s} {:10s}\n'.format('Slope limiter', chosen_limiter))
+
     # Time breakdown
     info_txt.write('\n\nTime breakdown:\n')
     info_txt.write('{:30s} {:.10s}\n'.format('Code Section', 'Time [s]'))
@@ -627,14 +711,20 @@ if do_print:
     info_txt.write('{:30s} {:.6e}\n'.format('Defining map and error check', time1-time0))
     info_txt.write('{:30s} {:.6e}\n'.format('Initialising', time2-time1))
     info_txt.write('{:30s} {:.6e}\n'.format('Time loop', time3-time2))
+    info_txt.write('- - - - - - - - - - - - - - - - - - - - - - - \n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Junction solver', junction_time))
+    info_txt.write('{:30s} {:.6e}\n'.format('Spatial reconstruction', reconstruction_time))
+    info_txt.write('{:30s} {:.6e}\n'.format('Runge-Kutta updates', RK_update_time))
+    info_txt.write('- - - - - - - - - - - - - - - - - - - - - - - \n')
     info_txt.write('{:30s} {:.6e}\n'.format('Save results', time4-time3))
+    info_txt.write('----------------------------------------------\n')
     info_txt.write('----------------------------------------------\n')
     info_txt.write('{:30s} {:.6e}\n'.format('Total program time', time4-time0))
     info_txt.write('----------------------------------------------\n')
 
     # File code line count
     num_lines = {}
-    files = ['main.py', 'define_map.py', 'params.txt']
+    files = ['main.py', 'define_map.py', 'params.txt', 'MUSCLReconstruction.py', 'WENOReconstruction.py']
     for file in files:
         num_lines[file] = 0
         with open(file, 'r') as f:

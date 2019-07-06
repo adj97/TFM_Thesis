@@ -26,8 +26,9 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road1(i,:),'b-')
     plot(0:length-1,so_road1(i,:),'g-')
+    plot(0:length-1,wo5_road1(i,:),'k-')
     hold off
-    legend('WENO','1st', '2nd')
+    legend('WENO3','1st', '2nd', 'WENO5')
     title(sprintf('Frame %d', i))
     xlim([0 length])
     ylim([0 maximum])
@@ -37,6 +38,7 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road2(i,:),'b-')
     plot(0:length-1,so_road2(i,:),'g-')
+    plot(0:length-1,wo5_road2(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
@@ -46,6 +48,7 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road3(i,:),'b-')
     plot(0:length-1,so_road3(i,:),'g-')
+    plot(0:length-1,wo5_road3(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
@@ -55,6 +58,7 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road4(i,:),'b-')
     plot(0:length-1,so_road4(i,:),'g-')
+    plot(0:length-1,wo5_road4(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
@@ -64,6 +68,7 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road5(i,:),'b-')
     plot(0:length-1,so_road5(i,:),'g-')
+    plot(0:length-1,wo5_road5(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
@@ -73,6 +78,7 @@ for i=1:340
     hold on
     plot(0:length-1,fo_road6(i,:),'b-')
     plot(0:length-1,so_road6(i,:),'g-')
+    plot(0:length-1,wo5_road6(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
