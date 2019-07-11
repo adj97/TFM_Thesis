@@ -125,9 +125,8 @@ def weno5(cell, variable_array):
     # STEP 1
     # Construct required density values
     # rho_weno[i] is equivalent to rho_{cell+i} for i={-2, -1, 0, 1, 2}
-    rho_weno = np.concatenate((variable_array[cell],                  # center cell
-                               variable_array[cell+1:cell+3],         # right stencil cells
-                               variable_array[cell-1:cell-3:-1]))     # left stencil cells
+    rho_weno = np.concatenate((variable_array[cell:cell+3],           # center and right
+                               variable_array[cell-1:cell-3:-1]))     # left
 
     # STEP 2
     # Define known ENO coefficients

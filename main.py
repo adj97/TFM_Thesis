@@ -220,6 +220,8 @@ dx = params['dx']                             # Spatial resolution [km]
 T = params['T']                               # Final time [hr]
 CFL = params['CFL']                           # Courant-Friedrichs-Lewy (CFL) safety factor constraint
 reconstruction = params['reconstruction']     # Reconstruction scheme
+velocity_model_id = params['velocity_model']  # Velocity-density model
+riemann_solver = params['riemann_solver']     # Riemann solver / numerical flux calculator
 
 # Time resolution from CFL constraint
 dt = dx/(CFL*V_max)  # [hr]
@@ -249,9 +251,6 @@ weno7 = WENOReconstruction.weno7
 # MUSCL reconstruction definitions
 muscl2 = MUSCLReconstruction.muscl2
 muscl3 = MUSCLReconstruction.muscl3
-
-# Riemann solvers
-
 
 # Specific timers
 junction_time = 0
@@ -321,15 +320,27 @@ def junction(network_section, A, rho_0, junction_number):
 
     return flows
 
-# Velocity model function u=u(rho)
-def velocity_model(road_section, density):
+# Velocity model function u=u(rho) and derivative
+def velocity_model(road_section, density, derivative):
 
-    # Greenshield's
-    u_f = road_section['vmax']
-    d_m = road_section['dmax']
-    velocity_value = u_f*(1-density/d_m)
+    if velocity_model_id == 'Greenshields':
 
-    return velocity_value
+        # Greenshield's
+        u_f = road_section['vmax']
+        d_m = road_section['dmax']
+        velocity_model_value = u_f*(1-density/d_m)
+
+        # Derivative
+        if derivative == 1:
+            velocity_model_value = - u_f / d_m
+
+    else:  # Wrong velocity model specifier
+
+        print('ERROR: Wrong velocity model specifier')
+        exit(1)
+
+
+    return velocity_model_value
 
 # Compute the numerical flux
 def compute_flux(CdL, CdR, FlL, FlR):
@@ -337,34 +348,69 @@ def compute_flux(CdL, CdR, FlL, FlR):
     # CdL/CdR - conserved left/right density
     # FlL/FlR - physical left/right flux
 
-    riemann_solver = 'LaxFriedrichs'
-
     if riemann_solver == 'LaxFriedrichs':
 
         # Lax-Friedrichs
-        flux_value = 0.5*(FlL+FlR)-0.5*(dx/dt)*(CdR-CdL)
+
+        # S+ value
+        Splus = dx/dt
+
+        # Flux
+        flux_value = 0.5*((FlL+FlR)-Splus*(CdR-CdL))
 
     elif riemann_solver == 'Rusanov':
 
         # Rusanov
-        print('Rusanov Solver')
-        exit()
+
+        # Left and right derivatives
+        dfL = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+        dfR = velocity_model(network[road], CdR, 0) + CdR * velocity_model(network[road], CdR, 1)
+
+        # S+ value
+        Splus = max(dfL, dfR)
+
+        # Flux
+        flux_value = 0.5 * ((FlL + FlR) - Splus * (CdR - CdL))
 
     elif riemann_solver == 'Murman-Roe':
 
         # Murman-Roe
-        print('Murman-Roe Solver')
-        exit()
+
+        if CdL == CdR:
+            # Velocity
+            a = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+
+            # Flux
+            if a>0:
+                flux_value = FlL
+            else:
+                flux_value = FlR
+        else:
+            # Velocity
+            a = (FlL-FlR)/(CdL-CdR)
+
+            # Flux
+            flux_value = 0.5 * ((FlL + FlR) - abs(a) * (CdR - CdL))
 
     elif riemann_solver == 'HLL':
 
-        # HLL
-        print('HLL Solver')
-        exit()
+        # Harten-Leer-Lax
 
-    else:  # Wrong flux specifier
+        # Fastest signals
+        S_L = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+        S_R = velocity_model(network[road], CdR, 0) + CdR * velocity_model(network[road], CdR, 1)
 
-        print('ERROR: Wrong flux specifier')
+        # Flux
+        if S_L >= 0 :
+            flux_value = FlL
+        elif S_L < 0 and S_R >= 0:
+            flux_value = (S_R*FlL - S_L*FlR +S_L*S_R*(CdR-CdL))/(S_R-S_L)
+        else:
+            flux_value = FlR
+
+    else:  # Wrong Riemann solver specifier
+
+        print('ERROR: Wrong Riemann solver specifier')
         exit(1)
 
 
@@ -580,8 +626,8 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
                 CR = reconstructed[cell_id+1, 0]
 
                 # Get L and R physical flux(F)
-                FL = CL*velocity_model(network[road], CL)
-                FR = CR*velocity_model(network[road], CR)
+                FL = CL*velocity_model(network[road], CL, 0)
+                FR = CR*velocity_model(network[road], CR, 0)
 
                 # Calculate flux
                 CellFluxes[cell_id] = compute_flux(CL, CR, FL, FR)
@@ -639,7 +685,7 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
 time3 = time.time()
 
 # Chose to save or not
-do_print = True
+do_print = False
 
 # Save density profile
 if do_print:
@@ -659,6 +705,14 @@ else:
 # Results saved - program complete
 time4 = time.time()
 
+# Read parameter file
+with open('params.txt') as file:
+    params = json.load(file)
+
+# Find required slope limiter
+chosen_limiter = params['limiter']
+print_limiter = False  # default
+
 # Print program times
 if do_print:
     # Overwrite file (comment out)
@@ -669,14 +723,6 @@ if do_print:
     info_txt.write('TFM Simulation Information \n\n')
     now = datetime.datetime.now()
     info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
-
-    # Read parameter file
-    with open('params.txt') as file:
-        params = json.load(file)
-
-    # Find required slope limiter
-    chosen_limiter = params['limiter']
-    print_limiter = False  # default
 
     # Write reconstruction phrases
     if reconstruction == 'FirstOrder':
@@ -754,6 +800,16 @@ if do_print:
     # Close file
     info_txt.close()
 
-time.sleep(1)
-print('Done')
+else:
+    time.sleep(1)
+    # Print basic info to console
+    print('Done')
+    print('        Spatial step :', dx)
+    print('          Final time :', T)
+    print('                 CFL :', CFL)
+    print('      Velocity Model :', velocity_model_id)
+    print('      Riemann solver :', riemann_solver)
+    print('Reconstuction method :', reconstruction)
+    if reconstruction == 'MUSCL2' or 'MUSCL3': print('       Slope limiter :', chosen_limiter)
+
 exit()

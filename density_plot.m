@@ -8,82 +8,88 @@ set(0,'DefaultFigureWindowStyle','docked')
 density=dlmread('density.txt');
 
 % split
-road1 = density(:,1:50);
-road2 = density(:, 51:100);
-road3 = density(:,101:150);
-road4 = density(:, 151:200);
-road5 = density(:,201:250);
-road6 = density(:, 251:300);
+wo5_road1 = density(:,1:50);
+wo5_road2 = density(:, 51:100);
+wo5_road3 = density(:,101:150);
+wo5_road4 = density(:, 151:200);
+wo5_road5 = density(:,201:250);
+wo5_road6 = density(:, 251:300);
 clear density
 
-% Simple Plot density profile
-[frames, length]=size(road1);
-maximum = max(max(road1));
+%%
 
-for i=1:340
+% Simple Plot density profile
+[frames, length]=size(fo_road1);
+maximum = max(max(fo_road1));
+
+siz = 30;
+
+for i=1:400
     subplot(2,4,[1 5])
-    plot(0:length-1,road1(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road1(i,:),'b-')
+    hold on    
     plot(0:length-1,so_road1(i,:),'g-')
+    plot(0:length-1,M_road1(i,:),'r-')
     plot(0:length-1,wo5_road1(i,:),'k-')
     hold off
-    legend('WENO3','1st', '2nd', 'WENO5')
+    legend('1st', '2nd','MUSCL3','WENO5')
     title(sprintf('Frame %d', i))
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,2)
-    plot(0:length-1,road2(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road2(i,:),'b-')
+    hold on
     plot(0:length-1,so_road2(i,:),'g-')
+    plot(0:length-1,M_road2(i,:),'r-')
     plot(0:length-1,wo5_road2(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,6)
-    plot(0:length-1,road3(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road3(i,:),'b-')
+    hold on
     plot(0:length-1,so_road3(i,:),'g-')
+    plot(0:length-1,M_road3(i,:),'r-')
     plot(0:length-1,wo5_road3(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,3)
-    plot(0:length-1,road4(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road4(i,:),'b-')
+    hold on
     plot(0:length-1,so_road4(i,:),'g-')
+    plot(0:length-1,M_road4(i,:),'r-')
     plot(0:length-1,wo5_road4(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,7)
-    plot(0:length-1,road5(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road5(i,:),'b-')
+    hold on
     plot(0:length-1,so_road5(i,:),'g-')
+    plot(0:length-1,M_road5(i,:),'r-')
     plot(0:length-1,wo5_road5(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,[4 8])
-    plot(0:length-1,road6(i,:),'r-')
-    hold on
     plot(0:length-1,fo_road6(i,:),'b-')
+    hold on
     plot(0:length-1,so_road6(i,:),'g-')
+    plot(0:length-1,M_road6(i,:),'r-')
     plot(0:length-1,wo5_road6(i,:),'k-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
-    pause()
+    set(gcf,'PaperSize',[siz*0.8,siz*1.2]);
+    filename=sprintf('frame%04i',i);
+    print(filename,'-dpng')
 end
 
  %% network plot
@@ -158,9 +164,7 @@ for i=1:338
         title('Road 12')
         camroll(90)
     
-    %set(gcf,'PaperSize',[siz*0.8,siz*1.2]);
-    %filename=sprintf('frame%04i',i);
-    %print(filename,'-dpng')
+
     pause()
 end
 

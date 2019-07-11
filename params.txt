@@ -1,5 +1,7 @@
 {"dx"  : 0.1,
  "T"   : 0.5,
  "CFL" : 1.5,
- "reconstruction" : "WENO3",
- "limiter" : "MinMod"}
+ "velocity_model" : "Greenshields",
+ "riemann_solver" : "LaxFriedrichs",
+ "reconstruction" : "MUSCL2",
+ "limiter" : "vanLeer"}
