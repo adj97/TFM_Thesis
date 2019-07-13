@@ -2,6 +2,6 @@
  "T"   : 0.5,
  "CFL" : 1.5,
  "velocity_model" : "Greenshields",
- "riemann_solver" : "LaxFriedrichs",
+ "riemann_solver" : "Rusanov",
  "reconstruction" : "MUSCL2",
- "limiter" : "vanLeer"}
+ "limiter" : "vanAlbada2"}

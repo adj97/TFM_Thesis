@@ -26,7 +26,7 @@ import time                              # recording execution time
 import json                              # read json format parameter file
 import define_map                        # separate python file for network and junction info
 import WENOReconstruction                # |----------"-----------| WENO reconstructions
-import MUSCLReconstruction                # |----------"-----------| WENO reconstructions
+import MUSCLReconstruction               # |----------"-----------| WENO reconstructions
 
 # Start time
 time0 = time.time()
@@ -49,12 +49,14 @@ error_info = {'mis_attr': 0,
               'attr_typ': 0,
               'tdm_row_sum': 0,
               'tdm_shape': 0,
-              'rd_id_er': 0}
+              'rd_id_er': 0,
+              'params': 0}
 error_description = {'mis_attr': 'missing attribute',
                      'attr_typ': 'wrong attribute type',
                      'tdm_row_sum': 'TDM row sum error',
                      'tdm_shape': 'TDM shape error',
-                     'rd_id_er': 'road-junction ID mismatch'}
+                     'rd_id_er': 'road-junction ID mismatch',
+                     'params': 'badly defined parameter(s) in params.txt'}
 error_message = ''
 jn_inout = {'in': [], 'out': []}
 
@@ -157,6 +159,49 @@ for road in network:
                 error_info['rd_id_er'] += 1
                 error_message += 'Bad ID for internal road {}'.format(road)
 
+# Parameter file errors
+with open('params.txt') as file:
+
+    # Read and save parameters
+    params = json.load(file)
+
+    # Check for each parameter error
+    for element in params:
+        if element == 'dx' and (not isinstance(params[element],allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter dx'
+
+        if element == 'T' and (not isinstance(params[element],allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter T'
+
+        if element == 'CFL' and (not isinstance(params[element],allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter CFL'
+
+        if element == 'velocity_model':
+            if (not params[element] in ['Greenshields']) or (not isinstance(params[element],str)):
+                error_info['params'] += 1
+                error_message += 'Bad velocity model'
+
+        if element == 'riemann_solver':
+            if (not params[element] in ['LaxFriedrichs', 'HLL', 'Rusanov', 'Murman-Roe']) or (not isinstance(params[element],str)):
+                error_info['params'] += 1
+                error_message += 'Bad Riemann solver'
+
+        if element == 'reconstruction':
+            if (not params[element] in ['FirstOrder', 'SecondOrder', 'WENO3', 'WENO5', 'WENO7', 'MUSCL2', 'MUSCL3']) or (not isinstance(params[element],str)):
+                error_info['params'] += 1
+                error_message += 'Bad reconstruction parameter'
+
+        if element == 'limiter':
+            if (not params[element] in ['Charm','HCUS','HQUICK','Koren','MinMod',
+                                       'MonotonizedCentral','Osher','Ospre',
+                                       'Smart','Superbee','Sweby','UMIST',
+                                       'vanAlbada1','vanAlbada2','vanLeer']) or (not isinstance(params[element],str)):
+                error_info['params'] += 1
+                error_message += 'Bad slope limiter parameter'
+
 # Get total number of all errors
 error_total = 0
 for error_type in error_info:
@@ -211,10 +256,6 @@ time1 = time.time()
 # Number of road sections
 nb_link = len(network)
 
-# Read parameter file
-with open('params.txt') as file:
-    params = json.load(file)
-
 # Assign parameters
 dx = params['dx']                             # Spatial resolution [km]
 T = params['T']                               # Final time [hr]
@@ -248,6 +289,9 @@ weno3 = WENOReconstruction.weno3
 weno5 = WENOReconstruction.weno5
 weno7 = WENOReconstruction.weno7
 
+# Minmod function
+minmod = WENOReconstruction.minmod
+
 # MUSCL reconstruction definitions
 muscl2 = MUSCLReconstruction.muscl2
 muscl3 = MUSCLReconstruction.muscl3
@@ -265,9 +309,6 @@ def get_start_end(road_id):
     fn_end = fn_start + int(network[road_id]['length'] / dx) - 1
 
     return [fn_start, fn_end]
-
-# Minmod function
-minmod = WENOReconstruction.minmod
 
 # Junction flow function
 def junction(network_section, A, rho_0, junction_number):
@@ -334,23 +375,16 @@ def velocity_model(road_section, density, derivative):
         if derivative == 1:
             velocity_model_value = - u_f / d_m
 
-    else:  # Wrong velocity model specifier
-
-        print('ERROR: Wrong velocity model specifier')
-        exit(1)
-
 
     return velocity_model_value
 
-# Compute the numerical flux
+# Compute the numerical flux (Riemann solvers)
 def compute_flux(CdL, CdR, FlL, FlR):
 
     # CdL/CdR - conserved left/right density
     # FlL/FlR - physical left/right flux
 
     if riemann_solver == 'LaxFriedrichs':
-
-        # Lax-Friedrichs
 
         # S+ value
         Splus = dx/dt
@@ -359,8 +393,6 @@ def compute_flux(CdL, CdR, FlL, FlR):
         flux_value = 0.5*((FlL+FlR)-Splus*(CdR-CdL))
 
     elif riemann_solver == 'Rusanov':
-
-        # Rusanov
 
         # Left and right derivatives
         dfL = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
@@ -374,9 +406,9 @@ def compute_flux(CdL, CdR, FlL, FlR):
 
     elif riemann_solver == 'Murman-Roe':
 
-        # Murman-Roe
-
+        # Constant interface
         if CdL == CdR:
+
             # Velocity
             a = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
 
@@ -385,7 +417,9 @@ def compute_flux(CdL, CdR, FlL, FlR):
                 flux_value = FlL
             else:
                 flux_value = FlR
+
         else:
+
             # Velocity
             a = (FlL-FlR)/(CdL-CdR)
 
@@ -393,8 +427,6 @@ def compute_flux(CdL, CdR, FlL, FlR):
             flux_value = 0.5 * ((FlL + FlR) - abs(a) * (CdR - CdL))
 
     elif riemann_solver == 'HLL':
-
-        # Harten-Leer-Lax
 
         # Fastest signals
         S_L = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
@@ -407,11 +439,6 @@ def compute_flux(CdL, CdR, FlL, FlR):
             flux_value = (S_R*FlL - S_L*FlR +S_L*S_R*(CdR-CdL))/(S_R-S_L)
         else:
             flux_value = FlR
-
-    else:  # Wrong Riemann solver specifier
-
-        print('ERROR: Wrong Riemann solver specifier')
-        exit(1)
 
 
     return flux_value
@@ -467,11 +494,6 @@ def spatial_reco(reconstruction_type):
             # 3rd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
 
             [left, right] = muscl3(cell_id, rho_ghost)
-
-        else:  # Wrong reconstruction specifier
-
-            print('ERROR: Wrong reconstruction specifier')
-            exit(1)
 
         output_array[cell_id] = [left, right]
     return output_array
@@ -592,6 +614,7 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
         f_supply_downstream = net_glob_supply(road, t)
 
         # Runge-Kutta steps
+        # make this nicer
         for RK in range(0, 3):
 
             # Chose the most updated array for flux calculation
@@ -641,7 +664,6 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
             j = 0
             temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, allowed_types) else f_demand_upstream((i+1)*dt)
             use = temp_demand_upstream - CellFluxes[j]
-
             if RK == 0:
                 rho1[j] = rho_0[j] + (dt / dx) * use
             elif RK == 1:
@@ -677,7 +699,6 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
 
             # Log Runge-Kutta update time
             RK_update_time += time.time()
-
 
         Rho[i+1, start:end+1] = rho3
 
@@ -810,6 +831,6 @@ else:
     print('      Velocity Model :', velocity_model_id)
     print('      Riemann solver :', riemann_solver)
     print('Reconstuction method :', reconstruction)
-    if reconstruction == 'MUSCL2' or 'MUSCL3': print('       Slope limiter :', chosen_limiter)
+    if reconstruction == 'MUSCL2' or reconstruction == 'MUSCL3': print('       Slope limiter :', chosen_limiter)
 
 exit()

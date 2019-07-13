@@ -1,5 +1,5 @@
 %% Setup 
-clear density frames i length
+clear density
 close all
 clc
 set(0,'DefaultFigureWindowStyle','docked') 
@@ -8,88 +8,138 @@ set(0,'DefaultFigureWindowStyle','docked')
 density=dlmread('density.txt');
 
 % split
-wo5_road1 = density(:,1:50);
-wo5_road2 = density(:, 51:100);
-wo5_road3 = density(:,101:150);
-wo5_road4 = density(:, 151:200);
-wo5_road5 = density(:,201:250);
-wo5_road6 = density(:, 251:300);
+vanalbada2 = density(:,1:50);
+%wo5_road2 = density(:, 51:100);
+%wo5_road3 = density(:,101:150);
+%wo5_road4 = density(:, 151:200);
+%wo5_road5 = density(:,201:250);
+%wo5_road6 = density(:, 251:300);
 clear density
+
+%% simple plot
+
+[frames, length]=size(charm);
+
+for i=1:frames
+    plot(0:length-1, charm(i,:))
+    hold on
+    plot(0:length-1, hcus(i,:))
+    plot(0:length-1, hquick(i,:))
+    plot(0:length-1, koren(i,:))
+    plot(0:length-1, minmod(i,:))
+    plot(0:length-1, monotonizedcentral(i,:))
+    plot(0:length-1, osher(i,:))
+    plot(0:length-1, ospre(i,:), '--')   
+    plot(0:length-1, smart(i,:), '--') 
+    plot(0:length-1, superbee(i,:), '--')  
+    plot(0:length-1, sweby(i,:), '--') 
+    plot(0:length-1, umist(i,:), '--') 
+    plot(0:length-1, vanalbada1(i,:), '--') 
+    plot(0:length-1, vanalbada2(i,:), '--') 
+    plot(0:length-1, vanleer(i,:), ':') 
+    hold off
+    title(sprintf('Frame %d', i))
+    legend('Charm', 'HCUS', 'HQUICK', 'Koren', 'MinMod', ...
+           'MC', 'Osher', 'Ospre', 'Smart', 'Superbee',...
+           'Sweby', 'Umist', 'VanAlbada 1', 'VanAlbada 2',...
+           'VanLeer')
+    pause()
+end
 
 %%
 
 % Simple Plot density profile
 [frames, length]=size(fo_road1);
-maximum = max(max(fo_road1));
+maximum = 11;
 
-siz = 30;
+siz = 20;
 
-for i=1:400
+for i=263
     subplot(2,4,[1 5])
-    plot(0:length-1,fo_road1(i,:),'b-')
+    plot(0:length-1,fo_road1(i,:),'y-')
     hold on    
     plot(0:length-1,so_road1(i,:),'g-')
-    plot(0:length-1,M_road1(i,:),'r-')
-    plot(0:length-1,wo5_road1(i,:),'k-')
+    plot(0:length-1,m2_road1(i,:),'r-')
+    plot(0:length-1,m3_road1(i,:),'k-')
+    plot(0:length-1,wo3_road1(i,:),'c-')
+    plot(0:length-1,wo5_road1(i,:),'m-')
+    plot(0:length-1,wo7_road1(i,:),'b-')
     hold off
-    legend('1st', '2nd','MUSCL3','WENO5')
     title(sprintf('Frame %d', i))
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,2)
-    plot(0:length-1,fo_road2(i,:),'b-')
-    hold on
+    plot(0:length-1,fo_road2(i,:),'y-')
+    hold on    
     plot(0:length-1,so_road2(i,:),'g-')
-    plot(0:length-1,M_road2(i,:),'r-')
-    plot(0:length-1,wo5_road2(i,:),'k-')
+    plot(0:length-1,m2_road2(i,:),'r-')
+    plot(0:length-1,m3_road2(i,:),'k-')
+    plot(0:length-1,wo3_road2(i,:),'c-')
+    plot(0:length-1,wo5_road2(i,:),'m-')
+    plot(0:length-1,wo7_road2(i,:),'b-')
     hold off
+    legend('1st', '2nd','MUSCL2','MUSCL3','WENO3', 'WENO5', 'WENO7')
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,6)
-    plot(0:length-1,fo_road3(i,:),'b-')
-    hold on
+    plot(0:length-1,fo_road3(i,:),'y-')
+    hold on    
     plot(0:length-1,so_road3(i,:),'g-')
-    plot(0:length-1,M_road3(i,:),'r-')
-    plot(0:length-1,wo5_road3(i,:),'k-')
+    plot(0:length-1,m2_road3(i,:),'r-')
+    plot(0:length-1,m3_road3(i,:),'k-')
+    plot(0:length-1,wo3_road3(i,:),'c-')
+    plot(0:length-1,wo5_road3(i,:),'m-')
+    plot(0:length-1,wo7_road3(i,:),'b-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,3)
-    plot(0:length-1,fo_road4(i,:),'b-')
-    hold on
+    plot(0:length-1,fo_road4(i,:),'y-')
+    hold on    
     plot(0:length-1,so_road4(i,:),'g-')
-    plot(0:length-1,M_road4(i,:),'r-')
-    plot(0:length-1,wo5_road4(i,:),'k-')
+    plot(0:length-1,m2_road4(i,:),'r-')
+    plot(0:length-1,m3_road4(i,:),'k-')
+    plot(0:length-1,wo3_road4(i,:),'c-')
+    plot(0:length-1,wo5_road4(i,:),'m-')
+    plot(0:length-1,wo7_road4(i,:),'b-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
     
     subplot(2,4,7)
-    plot(0:length-1,fo_road5(i,:),'b-')
-    hold on
+    plot(0:length-1,fo_road5(i,:),'y-')
+    hold on    
     plot(0:length-1,so_road5(i,:),'g-')
-    plot(0:length-1,M_road5(i,:),'r-')
-    plot(0:length-1,wo5_road5(i,:),'k-')
+    plot(0:length-1,m2_road5(i,:),'r-')
+    plot(0:length-1,m3_road5(i,:),'k-')
+    plot(0:length-1,wo3_road5(i,:),'c-')
+    plot(0:length-1,wo5_road5(i,:),'m-')
+    plot(0:length-1,wo7_road5(i,:),'b-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
-    
+ 
     subplot(2,4,[4 8])
-    plot(0:length-1,fo_road6(i,:),'b-')
-    hold on
+    plot(0:length-1,fo_road6(i,:),'y-')
+    hold on    
     plot(0:length-1,so_road6(i,:),'g-')
-    plot(0:length-1,M_road6(i,:),'r-')
-    plot(0:length-1,wo5_road6(i,:),'k-')
+    plot(0:length-1,m2_road6(i,:),'r-')
+    plot(0:length-1,m3_road6(i,:),'k-')
+    plot(0:length-1,wo3_road6(i,:),'c-')
+    plot(0:length-1,wo5_road6(i,:),'m-')
+    plot(0:length-1,wo7_road6(i,:),'b-')
     hold off
     xlim([0 length])
     ylim([0 maximum])
+    pause(0.00000001)
     
-    set(gcf,'PaperSize',[siz*0.8,siz*1.2]);
-    filename=sprintf('frame%04i',i);
-    print(filename,'-dpng')
+    %set(gcf,'PaperSize',[siz*1.2,siz]);
+    %filename=sprintf('frame%04i',i);
+    %filename = 'reconstructions';
+    %print(filename,'-dpdf')
 end
 
  %% network plot
