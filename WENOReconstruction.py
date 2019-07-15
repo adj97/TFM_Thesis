@@ -13,6 +13,7 @@ import math         # mathematical functions
 # Available on
 #   https://www3.nd.edu/~zxu2/acms60790S13/Shu-WENO-notes.pdf
 
+
 # 3rd Order
 def weno3(cell, variable_array):
 
@@ -71,7 +72,7 @@ def weno3(cell, variable_array):
     epsilon = 1e-6
 
     # Each alpha value
-    for r in range(0,2):
+    for r in range(0, 2):
 
         # Right alpha
         alpha[r] = d[r]/((epsilon+beta[r])**2)
@@ -94,7 +95,6 @@ def weno3(cell, variable_array):
         # left weights
         omega_t[r] = alpha_t[r]/sum(alpha_t)
 
-
     # STEP 6
     # Evaluate the two 5th order reconstructions
     # Initialise sums
@@ -102,7 +102,7 @@ def weno3(cell, variable_array):
     rhominWENO = 0    # left
 
     # Each weight and ENO reconstructed value in the sum
-    for r in range(0,2):
+    for r in range(0, 2):
 
         # Right
         rhoplusWENO += omega[r]*rhoplusENO[r]
@@ -196,7 +196,7 @@ def weno5(cell, variable_array):
     epsilon = 1e-6
 
     # Each alpha value
-    for r in range(0,3):
+    for r in range(0, 3):
 
         # Right alpha
         alpha[r] = d[r]/((epsilon+beta[r])**2)
@@ -227,7 +227,7 @@ def weno5(cell, variable_array):
     rhominWENO = 0    # left
 
     # Each weight and ENO reconstructed value in the sum
-    for r in range(0,3):
+    for r in range(0, 3):
 
         # Right
         rhoplusWENO += omega[r]*rhoplusENO[r]
@@ -239,7 +239,6 @@ def weno5(cell, variable_array):
     # Assign reconstructed values to output objects
     left_reco = rhominWENO
     right_reco = rhoplusWENO
-
 
     # End function
     return [left_reco, right_reco]
@@ -305,13 +304,13 @@ def weno7(cell, variable_array):
     # Each smoothness indicator
     for r in range(0, 4):
 
-        #initialise outer sum
+        # Initialise outer sum
         outer_sum = 0
 
         # J loop
         for j in range(0, 4):
 
-            #initialise inner sum
+            # Initialise inner sum
             inner_sum = 0
 
             # L loop
@@ -337,7 +336,7 @@ def weno7(cell, variable_array):
     epsilon = 1e-6
 
     # Each alpha value
-    for r in range(0,4):
+    for r in range(0, 4):
 
         # Right alpha
         alpha[r] = d[r]/((epsilon+beta[r])**2)
@@ -367,7 +366,7 @@ def weno7(cell, variable_array):
     rhominWENO = 0    # left
 
     # Each weight and ENO reconstructed value in the sum
-    for r in range(0,4):
+    for r in range(0, 4):
 
         # Right
         rhoplusWENO += omega[r]*rhoplusENO[r]
@@ -378,7 +377,7 @@ def weno7(cell, variable_array):
     # STEP 7
     # Monotonicity preserving bounds
     # A.  Suresh  and  H.  T.  Huynh,
-    # Accurate  monotonicity  preserving  scheme  with  Runge–kutta  time-stepping,
+    # Accurate monotonicity preserving scheme with Runge-Kutta time-stepping,
     # J. Comput. Phys.136, 83 (1997).
 
     # STEP 7a
@@ -389,10 +388,10 @@ def weno7(cell, variable_array):
 
     # STEP 7b
     # Minmod of local curvature
-    right_dmd = minmod(d_j,d_jp1)
-    right_dlc = minmod(d_j,d_jp1)
-    left_dmd = minmod(d_j,d_jm1)
-    left_dlc = minmod(d_j,d_jm1)
+    right_dmd = minmod(d_j, d_jp1)
+    right_dlc = minmod(d_j, d_jp1)
+    left_dmd = minmod(d_j, d_jm1)
+    left_dlc = minmod(d_j, d_jm1)
 
     # STEP 7c
     # Define curvature constants
@@ -427,8 +426,10 @@ def weno7(cell, variable_array):
 
 
 # Minmod function
-def minmod(arg1,arg2): return 0.5*(math.copysign(1.0,arg1)+math.copysign(1.0,arg2))*min(abs(arg1),abs(arg2))
+def minmod(arg1,arg2):
+    return 0.5*(math.copysign(1.0, arg1)+math.copysign(1.0, arg2))*min(abs(arg1), abs(arg2))
 
 
 # Median function
-def median(x,y,z): return x+minmod(y-x, z-x)
+def median(x,y,z):
+    return x+minmod(y-x, z-x)

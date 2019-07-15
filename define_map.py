@@ -29,9 +29,9 @@ network = {}
 # def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 # network[1]['demand'] = demand
 # network[1]['supply'] = supply
-# def demand_upstream(t): return 0
+# def demand_upstream(): return 0
 # network[1]['source'] = demand_upstream
-# def supply_downstream(t): return 10000000000000
+# def supply_downstream(): return 10000000000000
 # network[1]['sink'] = supply_downstream
 
 # SOURCE ROADS
@@ -42,7 +42,7 @@ def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[1]['demand'] = demand
 network[1]['supply'] = supply
-def demand_upstream(t): return 0
+def demand_upstream(): return 0
 network[1]['source'] = demand_upstream
 
 network[2] = {'length': 5, 'vmax': 90, 'dmax': 150, 'source': 0, 'sink': 0}
@@ -74,7 +74,7 @@ def demand(rho): return (90*rho)*(rho <= 30) + 2700*(rho > 30)
 def supply(rho): return 2700*(rho <= 30) + (15*(30-rho)+2700)*(rho > 30)
 network[6]['demand'] = demand
 network[6]['supply'] = supply
-def supply_downstream(t): return 100000000
+def supply_downstream(): return 100000000
 network[6]['sink'] = supply_downstream
 
 # Define Junction Characteristics

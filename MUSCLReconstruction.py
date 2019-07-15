@@ -9,10 +9,9 @@ import json         # read json format parameter file
 #    V. A Second Order Sequel to Godunov's Method,
 #    J. Com. Phys,
 #    32,
-#    101–136
+#    101-136
 #
-# Available on
-#   https://en.wikipedia.org/wiki/MUSCL_scheme
+# Available on https://en.wikipedia.org/wiki/MUSCL_scheme
 
 
 # 2nd Order
@@ -74,7 +73,7 @@ def muscl3(cell, variable_array):
     # STEP 4b
     # Final reconstructed values
     left_reco = rho_muscl[0] - 0.25*limiter(r_i)*left_reco
-    right_reco =rho_muscl[0] + 0.25*limiter(r_i)*right_reco
+    right_reco = rho_muscl[0] + 0.25*limiter(r_i)*right_reco
 
     # End function
     return [left_reco, right_reco]
@@ -90,8 +89,7 @@ chosen_limiter = params['limiter']
 
 # Slope Limiter
 def limiter(r):
-    # These limiters are given in
-    #   https://en.wikipedia.org/wiki/Flux_limiter
+    # These limiters are given in https://en.wikipedia.org/wiki/Flux_limiter
 
     if chosen_limiter == "Charm":
         # Charm
@@ -152,14 +150,14 @@ def limiter(r):
         # Superbee
         # Roe, 1986
         # 2nd order TDV accurate, symmetric
-        limited_slope = max(0, min(2*r,1), min(r,2))
+        limited_slope = max(0, min(2*r, 1), min(r, 2))
 
     elif chosen_limiter == "Sweby":
         # Sweby
         # Sweby, 1984
         # not 2nd order TDV accurate, symmetric
         b = 1.5
-        limited_slope = max(0, min(b*r,1), min(r,b))
+        limited_slope = max(0, min(b*r, 1), min(r, b))
 
     elif chosen_limiter == "UMIST":
         # UMIST

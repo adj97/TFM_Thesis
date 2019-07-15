@@ -3,8 +3,14 @@ TFM Network Pseudocode
 -----------------------------
 ---------- MAIN.PY ----------
 
+Start
+
 Define - road network and each road's characteristics
        - each junction
+
+Check Errors - Over missing attributes, wrong type, ...
+             - In all input : network, junctions, params.txt
+             - Print error messages if present and exit
 
 Calculate - global network max speed
           - total network length
@@ -13,16 +19,24 @@ Calculate - global network max speed
 Define - spatial resolution dx
        - final time end T
        - CFL constraint
+       - Reconstruction \
+       - Velocity model | - from params.txt
+       - Riemann solver /
 
 Calculate - time resolution dt from CFL
 
 Create - spatial grid points
-       - initial global density profile
+       - initial road-global density profile
 
 Save - initial profile to final data array
 
-Define - Godunov solver
-       - Junction function
+Define functions - Godunov solver
+                 - Junctions
+                 - Reconstructions
+                 - Get start and end road index
+                 - Velocity model
+                 - Compute intercell flux
+                 - Global supply/demand functions
 
 Time loop:
 |
@@ -36,15 +50,27 @@ Time loop:
 | 
 | Define global supply/demand functions for a general road in the network
 | 
-| Road  loop:
+| Road loop:
 | |
 | | Set the current density on this road as the initial condition vector
 | |
-| | Run the Godunov solver for a single road and a single time step
+| | Runge-Kutta step loop:
+| | |
+| | | Fix and define ghost cells
+| | |
+| | | Compute cell-reconstructed density at interfaces
+| | |
+| | | Compute numerical flux from reconstructed interface density
+| | |
+| | | Perform and save the next RK updated solution
+| |
+| | Save the next time step density profile on this road
 
-Save - complete data array
+Save data
 
-Print - program time statistics
+Print program statistics
+
+End
 
 -----------------------------
 -----------------------------
