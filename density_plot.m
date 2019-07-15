@@ -1,5 +1,5 @@
 %% Setup 
-clear all
+clear density
 close all
 clc
 set(0,'DefaultFigureWindowStyle','docked') 
@@ -7,17 +7,62 @@ set(0,'DefaultFigureWindowStyle','docked')
 % Read in
 density=dlmread('density.txt');
 
+% split
+r1 = density(:,1:50);
+r2 = density(:, 51:100);
+r3 = density(:,101:150);
+r4 = density(:, 151:200);
+r5 = density(:,201:250);
+r6 = density(:, 251:300);
+clear density
+
+%%
+
 % Simple Plot density profile
-[frames, length]=size(density);
-maximum=max(max(density));
+[nframes, length]=size(r1);
+maximum = 11;
 
-for i=1:frames
-    plot(1:length,density(i,:),'o')
+siz = 20;
+
+for i=1:nframes
+    subplot(2,4,[1 5])
+    plot(0:length-1,r1(i,:))
+    title(sprintf('Frame %d', i))
     xlim([0 length])
-    ylim([0 maximum*1.1])
+    ylim([0 maximum])
+    
+    subplot(2,4,2)
+    plot(0:length-1,r2(i,:))
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,6)
+    plot(0:length-1,r3(i,:))
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,3)
+    plot(0:length-1,r4(i,:))
+    xlim([0 length])
+    ylim([0 maximum])
+    
+    subplot(2,4,7)
+    plot(0:length-1,r5(i,:))
+    xlim([0 length])
+    ylim([0 maximum])
+ 
+    subplot(2,4,[4 8])
+    plot(0:length-1,r6(i,:))
+    xlim([0 length])
+    ylim([0 maximum])
+    
     pause()
+    
+    %set(gcf,'PaperSize',[siz*1.2,siz]);
+    %filename=sprintf('frame%04i',i);
+    %filename = 'reconstructions';
+    %print(filename,'-dpdf')
 end
-
 
  %% network plot
  
@@ -91,9 +136,7 @@ for i=1:338
         title('Road 12')
         camroll(90)
     
-    %set(gcf,'PaperSize',[siz*0.8,siz*1.2]);
-    %filename=sprintf('frame%04i',i);
-    %print(filename,'-dpng')
+
     pause()
 end
 

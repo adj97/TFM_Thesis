@@ -25,6 +25,8 @@ from tqdm import tqdm                    # progressbar in time loop
 import time                              # recording execution time
 import json                              # read json format parameter file
 import define_map                        # separate python file for network and junction info
+import WENOReconstruction                # |----------"-----------| WENO reconstructions
+import MUSCLReconstruction               # |----------"-----------| WENO reconstructions
 
 # Start time
 time0 = time.time()
@@ -47,14 +49,19 @@ error_info = {'mis_attr': 0,
               'attr_typ': 0,
               'tdm_row_sum': 0,
               'tdm_shape': 0,
-              'rd_id_er': 0}
+              'rd_id_er': 0,
+              'params': 0}
 error_description = {'mis_attr': 'missing attribute',
                      'attr_typ': 'wrong attribute type',
                      'tdm_row_sum': 'TDM row sum error',
                      'tdm_shape': 'TDM shape error',
-                     'rd_id_er': 'road-junction ID mismatch'}
+                     'rd_id_er': 'road-junction ID mismatch',
+                     'params': 'badly defined parameter(s) in params.txt'}
 error_message = ''
 jn_inout = {'in': [], 'out': []}
+
+# Allowed data types
+allowed_types = (int, float)
 
 for junction in junction_info:
 
@@ -71,12 +78,11 @@ for junction in junction_info:
             error_info['attr_typ'] += 1
             error_message += 'Badly defined in/out road ID in junction {} \n'.format(junction)
 
-    allowed_types = (int, float)
     for row in junction_info[junction]['tdm'].tolist():  # tdm elements
         for a in row:
-                if not isinstance(a, allowed_types):
-                    error_info['attr_typ'] += 1
-                    error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
+            if not isinstance(a, allowed_types):
+                error_info['attr_typ'] += 1
+                error_message += 'Badly defined TDM element, {}, in junction {} \n'.format(a, junction)
         # Check row sum
         if abs(1 - sum(row)) >= 1e-3:
             error_info['tdm_row_sum'] += 1
@@ -85,7 +91,7 @@ for junction in junction_info:
     # Check TDM matches in/out roads
     shape = junction_info[junction]['tdm'].shape
     junction_roads = [len(junction_info[junction]['in']), len(junction_info[junction]['out'])]
-    if (shape[0]!=junction_roads[0]) or (shape[1]!=junction_roads[1]):
+    if (shape[0] != junction_roads[0]) or (shape[1] != junction_roads[1]):
         error_info['tdm_shape'] += 1
         error_message += 'Mismatch TDM shape and in/out roads, in junction {} \n'.format(junction)
 
@@ -97,10 +103,10 @@ for junction in junction_info:
 
 for road in network:
 
-    #Check all road attributes are present
+    # Check all road attributes are present
     network_keys = list(network[road].keys())
     network_keys.sort()
-    if network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']:
+    if network_keys != ['demand', 'dmax', 'length', 'sink', 'source', 'supply', 'vmax']:
         error_message += 'Badly defined road {} \n'.format(road)
         error_info['mis_attr'] += network_keys != ['demand', 'length', 'sink', 'source', 'supply', 'vmax']
 
@@ -112,21 +118,20 @@ for road in network:
                 error_info['attr_typ'] += 1
                 error_message += 'Badly defined {} in road {} \n'.format(attr, road)
 
-        elif attr in ['length', 'vmax']:
+        elif attr in ['length', 'vmax', 'dmax']:
             # Length and vmax should be real numbers
-            allowed_types = (int, float)
             if (not isinstance(network[road][attr], allowed_types)) or network[road][attr] <= 0:
                 error_info['attr_typ'] += 1
                 error_message += 'Badly defined {} in road {} \n'.format(attr, road)
 
         elif attr in ['source', 'sink']:
             # Source and sink values can be either 0 or a function
-            if not (network[road][attr]==0 or callable(network[road][attr])):
+            if not (network[road][attr] == 0 or callable(network[road][attr])):
                 error_info['attr_typ'] += 1
                 error_message += 'Badly defined {} in road {} \n'.format(attr, road)
 
     # Check road-junction index matching
-    if len(network)>1:
+    if len(network) > 1:
         if network[road]['source'] != 0:
             # Source roads only go IN to junctions
             if road in jn_inout['out']:
@@ -154,6 +159,51 @@ for road in network:
             if jn_inout['in'].count(road)+jn_inout['out'].count(road) < 2:
                 error_info['rd_id_er'] += 1
                 error_message += 'Bad ID for internal road {}'.format(road)
+
+# Parameter file errors
+with open('params.txt') as file:
+
+    # Read and save parameters
+    params = json.load(file)
+
+    # Check for each parameter error
+    for element in params:
+        if element == 'dx' and (not isinstance(params[element], allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter dx'
+
+        if element == 'T' and (not isinstance(params[element], allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter T'
+
+        if element == 'CFL' and (not isinstance(params[element], allowed_types) or params[element] <= 0):
+            error_info['params'] += 1
+            error_message += 'Bad parameter CFL'
+
+        if element == 'velocity_model':
+            if (not params[element] in ['Greenshields']) or (not isinstance(params[element], str)):
+                error_info['params'] += 1
+                error_message += 'Bad velocity model'
+
+        if element == 'riemann_solver':
+            if (not params[element] in ['LaxFriedrichs', 'HLL', 'Rusanov', 'Murman-Roe']) \
+                    or (not isinstance(params[element], str)):
+                error_info['params'] += 1
+                error_message += 'Bad Riemann solver'
+
+        if element == 'reconstruction':
+            if (not params[element] in ['FirstOrder', 'SecondOrder', 'WENO3', 'WENO5', 'WENO7', 'MUSCL2', 'MUSCL3']) \
+                    or (not isinstance(params[element], str)):
+                error_info['params'] += 1
+                error_message += 'Bad reconstruction parameter'
+
+        if element == 'limiter':
+            if (not params[element] in ['Charm', 'HCUS', 'HQUICK', 'Koren', 'MinMod',
+                                        'MonotonizedCentral', 'Osher', 'Ospre',
+                                        'Smart', 'Superbee', 'Sweby', 'UMIST', 'vanAlbada1',
+                                        'vanAlbada2', 'vanLeer']) or (not isinstance(params[element], str)):
+                error_info['params'] += 1
+                error_message += 'Bad slope limiter parameter'
 
 # Get total number of all errors
 error_total = 0
@@ -200,8 +250,10 @@ for road in network:
     total_length += network[road]['length']  # add up all road lengths
 
     # Create source and sink lists
-    if network[road]['source'] != 0: sources.append(road)
-    if network[road]['sink'] != 0: sinks.append(road)
+    if network[road]['source'] != 0:
+        sources.append(road)
+    if network[road]['sink'] != 0:
+        sinks.append(road)
 
 # Geometry and junctions (map) defined, errors checked
 time1 = time.time()
@@ -209,14 +261,13 @@ time1 = time.time()
 # Number of road sections
 nb_link = len(network)
 
-# Read parameter file
-with open('params.txt') as file:
-    params = json.load(file)
-
 # Assign parameters
-dx = params['dx']  # Spatial resolution [km]
-T = params['T']  # Final time [hr]
-CFL = params['CFL']  # Courant-Friedrichs-Lewy (CFL) safety factor constraint
+dx = params['dx']                             # Spatial resolution [km]
+T = params['T']                               # Final time [hr]
+CFL = params['CFL']                           # Courant-Friedrichs-Lewy (CFL) safety factor constraint
+reconstruction = params['reconstruction']     # Reconstruction scheme
+velocity_model_id = params['velocity_model']  # Velocity-density model
+riemann_solver = params['riemann_solver']     # Riemann solver / numerical flux calculator
 
 # Time resolution from CFL constraint
 dt = dx/(CFL*V_max)  # [hr]
@@ -226,17 +277,37 @@ x = np.arange(dx/2, total_length+dx/2, dx)
 
 # Initial density profile
 Rho_0 = np.zeros(len(x))
-#### INPUT ####
+
+# INPUT
 # Define initial global density profile
 for i in range(0, len(x)):
-    Rho_0[i] = 0
-
+    if x[i] < 1:
+        Rho_0[i] = 10
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
 n_x = int(total_length/dx)
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
+
+# WENO reconstruction definitions
+weno3 = WENOReconstruction.weno3
+weno5 = WENOReconstruction.weno5
+weno7 = WENOReconstruction.weno7
+
+# Minmod function
+minmod = WENOReconstruction.minmod
+
+# MUSCL reconstruction definitions
+muscl2 = MUSCLReconstruction.muscl2
+muscl3 = MUSCLReconstruction.muscl3
+
+# Specific timers
+junction_time = 0
+reconstruction_time = 0
+RK_update_time = 0
+RiemProb_time = 0
+
 
 # Get road start and end index function
 def get_start_end(road_id):
@@ -248,49 +319,8 @@ def get_start_end(road_id):
     return [fn_start, fn_end]
 
 
-# Godunov solver function
-def godunov(network_section, Rho_0, f_demand_upstream, f_supply_downstream, dx, T):
-
-    # road length
-    length = network_section['length']
-
-    # number of x points
-    n_x = int(length / dx)
-
-    # initialise density array
-    rho = np.zeros(len(Rho_0))
-
-    # Get current road supply and demand
-    supply = network_section['supply']
-    demand = network_section['demand']
-
-    # types list for callable function or non-callable number
-    allowed_types = (np.float64, int, np.int64)
-
-    # first cell
-    j = 0
-    temp_demand_upstream = f_demand_upstream if isinstance(f_demand_upstream, allowed_types) else f_demand_upstream((i+1)*dt)
-    inflow = min(temp_demand_upstream, supply(Rho_0[j]))
-    outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
-    rho[j] = Rho_0[j]+(dt/dx)*(inflow - outflow)
-    inflow = outflow
-
-    # internal cells
-    for j in range(1, n_x-1):
-        outflow = min(demand(Rho_0[j]), supply(Rho_0[j+1]))
-        rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
-        inflow = outflow
-
-    # end cell
-    j = n_x-1
-    temp_supply_downstream = f_supply_downstream if isinstance(f_supply_downstream, allowed_types) else f_supply_downstream((i+1)*dt)
-    outflow = min(demand(Rho_0[j]), temp_supply_downstream)
-    rho[j] = Rho_0[j] + (dt/dx)*(inflow - outflow)
-
-    return rho
-
 # Junction flow function
-def junction(network_section,A,rho_0, junction_number):
+def junction(network_section, A, rho_0, junction_number):
 
     # Get number of in and out roads
     n_in = len(junction_info[junction_number]['in'])
@@ -305,13 +335,13 @@ def junction(network_section,A,rho_0, junction_number):
     #           and supply of first cells on out roads
     # Road IN - demand f'n
     for df_i in range(0, n_in):
-        road_identifier = junction_info[junction_number]['in'][df_i]
-        sup_dem[df_i] = network_section[road_identifier]['demand'](rho_0[df_i])
+        inroad_identifier = junction_info[junction_number]['in'][df_i]
+        sup_dem[df_i] = network_section[inroad_identifier]['demand'](rho_0[df_i])
 
     # Road OUT - supply f'n
     for sf_i in range(0, n_out):
-        road_identifier = junction_info[junction_number]['out'][sf_i]
-        sup_dem[n_in + sf_i] = network_section[road_identifier]['supply'](rho_0[n_in + sf_i])
+        outroad_identifier = junction_info[junction_number]['out'][sf_i]
+        sup_dem[n_in + sf_i] = network_section[outroad_identifier]['supply'](rho_0[n_in + sf_i])
 
     # Initialise empty flows output array
     flows = np.zeros(len(rho_0))
@@ -335,17 +365,228 @@ def junction(network_section,A,rho_0, junction_number):
 
             # Sum of partial flow contribution from each in road
             flows[flow_i] = 0
-            for in_i in range(0, n_in): # for all i in roads
+            for in_i in range(0, n_in):  # for all in roads
                 flows[flow_i] += A[in_i, flow_i-n_in]*flows[in_i]
 
     return flows
+
+
+# Velocity model function u=u(rho) and derivative
+def velocity_model(road_section, density, derivative):
+
+    if velocity_model_id == 'Greenshields':
+
+        # Greenshield's
+        u_f = road_section['vmax']
+        d_m = road_section['dmax']
+        velocity_model_value = u_f*(1-density/d_m)
+
+        # Derivative
+        if derivative == 1:
+            velocity_model_value = - u_f / d_m
+
+    return velocity_model_value
+
+
+# Compute the numerical flux (Riemann solvers)
+def compute_flux():
+
+    # Initialise cell flux array
+    CellFluxes = np.zeros(len(rho_0))
+
+    # Loop through all cells
+    for cell_id in range(0, len(CellFluxes)):
+
+        # Reconstruction : Get L and R conserved(C) densities
+        CdL = reconstructed[cell_id, 1]
+        CdR = reconstructed[cell_id+1, 0]
+
+        # Get L and R physical flux(F)
+        FlL = CdL*velocity_model(network[road], CdL, 0)
+        FlR = CdR*velocity_model(network[road], CdR, 0)
+
+        # Calculate flux
+        if riemann_solver == 'LaxFriedrichs':
+
+            # S+ value
+            Splus = dx/dt
+
+            # Flux
+            flux_value = 0.5*((FlL+FlR)-Splus*(CdR-CdL))
+
+        elif riemann_solver == 'Rusanov':
+
+            # Left and right derivatives
+            dfL = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+            dfR = velocity_model(network[road], CdR, 0) + CdR * velocity_model(network[road], CdR, 1)
+
+            # S+ value
+            Splus = max(dfL, dfR)
+
+            # Flux
+            flux_value = 0.5 * ((FlL + FlR) - Splus * (CdR - CdL))
+
+        elif riemann_solver == 'Murman-Roe':
+
+            # Constant interface
+            if CdL == CdR:
+
+                # Velocity
+                a_speed = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+
+                # Flux
+                if a_speed > 0:
+                    flux_value = FlL
+                else:
+                    flux_value = FlR
+
+            else:
+
+                # Velocity
+                a_speed = (FlL-FlR)/(CdL-CdR)
+
+                # Flux
+                flux_value = 0.5 * ((FlL + FlR) - abs(a_speed) * (CdR - CdL))
+
+        elif riemann_solver == 'HLL':
+
+            # Fastest signals
+            S_L = velocity_model(network[road], CdL, 0) + CdL * velocity_model(network[road], CdL, 1)
+            S_R = velocity_model(network[road], CdR, 0) + CdR * velocity_model(network[road], CdR, 1)
+
+            # Flux
+            if S_L >= 0:
+                flux_value = FlL
+            elif S_L < 0 and S_R >= 0:
+                flux_value = (S_R*FlL - S_L*FlR + S_L*S_R*(CdR-CdL))/(S_R-S_L)
+            else:
+                flux_value = FlR
+
+        CellFluxes[cell_id] = flux_value
+
+    return CellFluxes
+
+
+# Spatial reconstruction
+def spatial_reco(reconstruction_type):
+
+    # Create array
+    output_array = np.zeros((len(rho_0)+1, 2))
+
+    # Loop over all cells
+    for cell_id in range(0, len(output_array)):
+
+        if reconstruction_type == 'FirstOrder':
+            # First order reconstruction
+            left = rho_ghost[cell_id]
+            right = rho_ghost[cell_id]
+
+        elif reconstruction_type == 'SecondOrder':
+            # 2nd order minmod reconstruction
+
+            # Right
+            xmr = rho_ghost[cell_id] - rho_ghost[cell_id - 1]
+            ymr = rho_ghost[cell_id + 1] - rho_ghost[cell_id]
+            right = rho_ghost[cell_id] + 0.5 * minmod(xmr, ymr)
+
+            # Left
+            xml = rho_ghost[cell_id] - rho_ghost[cell_id-1]
+            yml = rho_ghost[cell_id + 1] - rho_ghost[cell_id]
+            left = rho_ghost[cell_id] - 0.5 * minmod(xml, yml)
+
+        elif reconstruction_type == 'WENO3':
+            # 5th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            [left, right] = weno3(cell_id, rho_ghost)
+
+        elif reconstruction_type == 'WENO5':
+            # 5th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            [left, right] = weno5(cell_id, rho_ghost)
+
+        elif reconstruction_type == 'WENO7':
+            # 7th-Order Weighted Essentially Non-Oscillatory reconstruction
+
+            [left, right] = weno7(cell_id, rho_ghost)
+
+        elif reconstruction_type == 'MUSCL2':
+            # 2nd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
+
+            [left, right] = muscl2(cell_id, rho_ghost)
+
+        elif reconstruction_type == 'MUSCL3':
+            # 3rd-Order Monotonic Upwind reconstruction Scheme for Conservation Laws
+
+            [left, right] = muscl3(cell_id, rho_ghost)
+
+        output_array[cell_id] = [left, right]
+    return output_array
+
+
+# Network global demand
+def net_glob_demand(road, t):
+
+    if road in sources:
+        n_g_d = global_flows[road]['demand'](t)
+    else:
+        n_g_d = global_flows[road]['demand']
+
+    return n_g_d
+
+
+# Network global supply
+def net_glob_supply(road, t):
+
+    if road in sinks:
+        n_g_s = global_flows[road]['supply'](t)
+    else:
+        n_g_s = global_flows[road]['supply']
+
+    return n_g_s
+
+
+# Runge-Kutta update constants
+RKc = [[1, 0, 1],
+       [3/4, 1/4, 1/4],
+       [1/3, 2/3, 2/3]]
+
+
+# Runge-Kutta global update loops
+def RK_global_update(RK_step):
+
+    # first cell
+    j = 0
+    use = f_demand_upstream - CellFluxes[j]
+    RK_rho[RK_step+1][j] = RKc[RK_step][0] * RK_rho[0][j] + \
+                           RKc[RK_step][1] * RK_rho[RK_step][j] + \
+                           RKc[RK_step][2] * (dt / dx) * use
+    if road in sources:
+        RK_rho[RK_step+1][j] = global_flows[road]['demand'](0)
+
+    # internal cells
+    for j in range(1, n_x - 1):
+        use = CellFluxes[j - 1] - CellFluxes[j]
+        RK_rho[RK_step+1][j] = RKc[RK_step][0] * RK_rho[0][j] + \
+                               RKc[RK_step][1] * RK_rho[RK_step][j] + \
+                               RKc[RK_step][2] * (dt / dx) * use
+
+    # last cell
+    j = n_x - 1
+    outflow = min(CellFluxes[j], f_supply_downstream)
+    use = CellFluxes[j - 1] - outflow
+    RK_rho[RK_step+1][j] = RKc[RK_step][0] * RK_rho[0][j] + \
+                           RKc[RK_step][1] * RK_rho[RK_step][j] + \
+                           RKc[RK_step][2] * (dt / dx) * use
+
+    return RK_rho[RK_step+1]
+
 
 # Functions and arrays created
 time2 = time.time()
 
 # Time loop
+# for t in np.arange(dt, T, dt):          # loop without progress bar
 for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
-#for t in np.arange(dt, T, dt):          # loop without progress bar
 
     # Iteration index from time t
     i = int(round(t/dt)-1)
@@ -354,7 +595,7 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
     for junction_index in junction_info:
 
         # Extract from the junction information dict
-        A = junction_info[junction_index]['tdm']
+        tdm_array = junction_info[junction_index]['tdm']
         roads_in = junction_info[junction_index]['in']
         roads_out = junction_info[junction_index]['out']
 
@@ -379,8 +620,14 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
                 # out-road start
                 rho_0[rho_0_index] = Rho[i, start]
 
+        # Log junction time
+        junction_time -= time.time()
+
         # Call junction to get input/output flows
-        local_flows = junction(network, A, rho_0, junction_index)
+        local_flows = junction(network, tdm_array, rho_0, junction_index)
+
+        # Log junction time
+        junction_time += time.time()
 
         # Store each road's new supply/demand in global_flows
         for local_flow_i in range(0, len(local_flows)):
@@ -401,26 +648,6 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
     for sink in sinks:
         global_flows[sink]['supply'] = network[sink]['sink']
 
-
-    # Network global supply/demand definitions
-    def net_glob_demand(road, t):
-
-        if road in sources:
-            n_g_d = global_flows[road]['demand'](t)
-        else:
-            n_g_d = global_flows[road]['demand']
-
-        return n_g_d
-
-    def net_glob_supply(road, t):
-
-        if road in sinks:
-            n_g_s = global_flows[road]['supply'](t)
-        else:
-            n_g_s = global_flows[road]['supply']
-
-        return n_g_s
-
     # Each road separately
     for road in network:
 
@@ -430,16 +657,75 @@ for t in tqdm(np.arange(dt, T, dt)):  # loop with progress bar
         # Update the new 'initial' density as the previous-time-step solution
         rho_0 = Rho[i, start:end+1]
 
-        # Run Godunov for each road over a single time step
-        Rho[i+1, start:end+1] = godunov(network[road],
-                                      rho_0,
-                                      net_glob_demand(road, t),
-                                      net_glob_supply(road, t),
-                                      dx,
-                                      dt)
+        # number of x points
+        n_x = int(network[road]['length'] / dx)
+
+        # Get current road supply and demand
+        supply = network[road]['supply']
+        demand = network[road]['demand']
+
+        # types list for callable function or non-callable number
+        allowed_types = (np.float64, int, np.int64)
+
+        # incoming flow
+        f_demand_upstream = net_glob_demand(road, t)
+        f_supply_downstream = net_glob_supply(road, t)
+
+        # initialise RK-dict for density array
+        RK_rho = [[], [], [], []]
+        RK_rho[0] = rho_0.tolist()
+        RK_rho[1] = Rho[i + 1, start:end + 1].tolist()
+        RK_rho[2] = Rho[i + 1, start:end + 1].tolist()
+        RK_rho[3] = Rho[i + 1, start:end + 1].tolist()
+
+        # Runge-Kutta steps
+        for RK in range(0, 3):
+
+            # Chose the most updated array for flux calculation
+            rho_flux = RK_rho[RK]
+
+            # Add in ghost BCs
+            rho_ghost = np.append(rho_flux, [rho_flux[-2:-5:-1], rho_flux[3:0:-1]])
+
+            # Log reconstruction time
+            reconstruction_time -= time.time()
+
+            # Save all reconstructed L and R states in an array size (len(CellFluxes), 2)
+            reconstructed = spatial_reco(reconstruction)
+
+            # Log reconstruction time
+            reconstruction_time += time.time()
+
+            # Log Riemann problem time
+            RiemProb_time -= time.time()
+
+            # Compute each cell RHS interface flux
+            CellFluxes = compute_flux()
+
+            # Log Riemann problem time
+            RiemProb_time += time.time()
+
+            # Log Runge-Kutta update time
+            RK_update_time -= time.time()
+
+            # Update
+            RK_rho[RK+1] = RK_global_update(RK)
+
+            # Log Runge-Kutta update time
+            RK_update_time += time.time()
+
+        Rho[i+1, start:end+1] = RK_rho[3]
 
 # Time loop completed
 time3 = time.time()
+
+# Read parameter file
+with open('params.txt') as file:
+    params = json.load(file)
+
+# Find required slope limiter
+chosen_limiter = params['limiter']
+print_limiter = False  # default
 
 # Chose to save or not
 do_print = False
@@ -447,23 +733,18 @@ do_print = False
 # Save density profile
 if do_print:
     # Create output folder
-    if not os.path.exists('Simulation_Results'): os.mkdir('Simulation_Results')
+    if not os.path.exists('Simulation_Results'):
+        os.mkdir('Simulation_Results')
     path = 'Simulation_Results/'+str(datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
     os.mkdir(path)
 
     # Update the saved density profile in pwd
     density_output = path + '/density.txt'
     np.savetxt(density_output, Rho)
-else:
-    # Developing runs
-    os.remove('density.txt')
-    np.savetxt('density.txt', Rho)
 
-# Results saved - program complete
-time4 = time.time()
+    # Results saved - program complete
+    time4 = time.time()
 
-# Print program times
-if do_print:
     # Overwrite file (comment out)
     filename = path + '/simulation_info.txt'
 
@@ -473,6 +754,33 @@ if do_print:
     now = datetime.datetime.now()
     info_txt.write(now.strftime("%d/%m/%Y %H:%M:%S \n"))
 
+    # Write reconstruction phrases
+    if reconstruction == 'FirstOrder':
+        reconstruction = '1st Order single cell average'
+    elif reconstruction == 'SecondOrder':
+        reconstruction = '2nd Order minmod interpolation'
+    elif reconstruction == 'WENO3':
+        reconstruction = '3rd Order WENO'
+    elif reconstruction == 'WENO5':
+        reconstruction = '5th Order WENO'
+    elif reconstruction == 'WENO7':
+        reconstruction = '7th Order WENO monotonicity preserving bounds'
+    elif reconstruction == 'MUSCL2':
+        reconstruction = '2nd Order MUSCL'
+        print_limiter = True
+    elif reconstruction == 'MUSCL3':
+        reconstruction = '3rd Order MUSCL'
+        print_limiter = True
+
+    # Method information
+    info_txt.write('\n\nMethodology:\n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Spatial step', dx))
+    info_txt.write('{:30s} {:.6e}\n'.format('Final time', T))
+    info_txt.write('{:30s} {:.6e}\n'.format('CFL constraint', CFL))
+    info_txt.write('{:30s} {:10s}\n'.format('Reconstruction method', reconstruction))
+    if print_limiter:
+        info_txt.write('{:30s} {:10s}\n'.format('Slope limiter', chosen_limiter))
+
     # Time breakdown
     info_txt.write('\n\nTime breakdown:\n')
     info_txt.write('{:30s} {:.10s}\n'.format('Code Section', 'Time [s]'))
@@ -480,14 +788,21 @@ if do_print:
     info_txt.write('{:30s} {:.6e}\n'.format('Defining map and error check', time1-time0))
     info_txt.write('{:30s} {:.6e}\n'.format('Initialising', time2-time1))
     info_txt.write('{:30s} {:.6e}\n'.format('Time loop', time3-time2))
+    info_txt.write('- - - - - - - - - - - - - - - - - - - - - - - \n')
+    info_txt.write('{:30s} {:.6e}\n'.format('Junction solver', junction_time))
+    info_txt.write('{:30s} {:.6e}\n'.format('Spatial reconstruction', reconstruction_time))
+    info_txt.write('{:30s} {:.6e}\n'.format('Numerical flux calculation', RiemProb_time))
+    info_txt.write('{:30s} {:.6e}\n'.format('Runge-Kutta updates', RK_update_time))
+    info_txt.write('- - - - - - - - - - - - - - - - - - - - - - - \n')
     info_txt.write('{:30s} {:.6e}\n'.format('Save results', time4-time3))
+    info_txt.write('----------------------------------------------\n')
     info_txt.write('----------------------------------------------\n')
     info_txt.write('{:30s} {:.6e}\n'.format('Total program time', time4-time0))
     info_txt.write('----------------------------------------------\n')
 
     # File code line count
     num_lines = {}
-    files = ['main.py', 'define_map.py', 'params.txt']
+    files = ['main.py', 'define_map.py', 'params.txt', 'MUSCLReconstruction.py', 'WENOReconstruction.py']
     for file in files:
         num_lines[file] = 0
         with open(file, 'r') as f:
@@ -499,7 +814,7 @@ if do_print:
     info_txt.write('{: <30} {: <20}\n'.format('File', 'Number of Lines'))
     info_txt.write('----------------------------------------------\n')
     for file in num_lines:
-        if file=='Total':
+        if file == 'Total':
             info_txt.write('----------------------------------------------\n')
             info_txt.write('{: <30} {: <20}\n'.format(file, num_lines[file]))
             info_txt.write('----------------------------------------------\n')
@@ -511,12 +826,34 @@ if do_print:
     info_txt.write('\n\nOutput File Memory:\n')
     info_txt.write('{:30} {:}\n'.format('File', 'Size [MB]'))
     info_txt.write('----------------------------------------------\n')
-    info_txt.write('{0:30} {1:5.3f}\n'.format('density.txt',os.stat('density.txt').st_size / 1000000))
+    info_txt.write('{0:30} {1:5.3f}\n'.format('density.txt', os.stat('density.txt').st_size / 1000000))
     info_txt.write('----------------------------------------------\n')
 
     # Close file
     info_txt.close()
 
-time.sleep(1)
-print('Done')
+else:
+    # Developing runs
+    os.remove('density.txt')
+    np.savetxt('density.txt', Rho)
+
+    # Results saved - program complete
+    time4 = time.time()
+
+    # Wait 1 second
+    time.sleep(1)
+
+    # Print basic info to console
+    print('')
+    print('|- - - - - Simulation Complete - - - - -|')
+    print(' {:25s} {:.6e}'.format('Spatial step', dx))
+    print(' {:25s} {:.6e}'.format('Final time', T))
+    print(' {:25s} {:.6e}'.format('CFL', CFL))
+    print(' {:25s} {:6s}'.format('Velocity Model', velocity_model_id))
+    print(' {:25s} {:6s}'.format('Riemann solver', riemann_solver))
+    print(' {:25s} {:6s}'.format('Reconstuction method', reconstruction))
+    if reconstruction == 'MUSCL2' or reconstruction == 'MUSCL3':
+        print(' {:25s} {:6s}'.format('Slope limiter', chosen_limiter))
+    print('|- - - - - - - - - - - - - - - - - - - -|')
+
 exit()
