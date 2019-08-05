@@ -26,9 +26,6 @@ Source code for python based traffic flow modelling simulation for Cranfield Uni
 - Runge-Kutta error adaptive global time step size
 - Density gradient adaptive local spatial step size
 
-## Test cases used
-1. Example test case description, *`Author, A.N., Paper Name, 2019`*
-
 ## File Breakdown
 - `.idea` \(folder) : Python project files
 - `venv` \(folder) : Python virtual environment libraries
