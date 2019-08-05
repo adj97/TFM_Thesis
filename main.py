@@ -21,6 +21,7 @@ from __future__ import print_function    # print no new line
 import os                                # standard
 import datetime
 import numpy as np                       # numerical programming
+import math                              # mathematical tools
 from tqdm import tqdm                    # progressbar in time loop
 import time                              # recording execution time
 import json                              # read json format parameter file
@@ -255,6 +256,9 @@ for road in network:
     if network[road]['sink'] != 0:
         sinks.append(road)
 
+# Floating point error
+total_length = float(round(total_length, 10))
+
 # Geometry and junctions (map) defined, errors checked
 time1 = time.time()
 
@@ -281,12 +285,11 @@ Rho_0 = np.zeros(len(x))
 # INPUT
 # Define initial global density profile
 for i in range(0, len(x)):
-    if x[i] < 1:
-        Rho_0[i] = 10
+    Rho_0[i] = 0
 
 # Set initial density as the first row of Rho array
 n_t = len(np.arange(0, T, dt))
-n_x = int(total_length/dx)
+n_x = int(math.ceil(total_length/dx))
 Rho = np.zeros((n_t, n_x))
 Rho[0, ] = Rho_0
 
